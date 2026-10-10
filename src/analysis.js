@@ -137,6 +137,7 @@ function extractFrames(x) {
   const f2c = new Float32Array(n);
   const sib = new Float32Array(n); // 4–7.5 kHz: s, x
   const fmid = new Float32Array(n); // 1.5–4 kHz
+  const vband = new Float32Array(n); // 300–3400 Hz: dải giọng nói (bớt ảnh hưởng của trống, bass)
 
   const hann = new Float32Array(WIN);
   for (let i = 0; i < WIN; i++) hann[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (WIN - 1));
@@ -184,12 +185,13 @@ function extractFrames(x) {
     fft(re, im);
 
     let el = 0, em = 0, eh = 0;
-    let a1 = 0, b1 = 0, a2 = 0, b2 = 0, es = 0, efm = 0;
+    let a1 = 0, b1 = 0, a2 = 0, b2 = 0, es = 0, efm = 0, ev = 0;
     for (let k = 0; k <= NFFT / 2; k++) {
       const p = re[k] * re[k] + im[k] * im[k];
       const hz = k * binHz;
       if (hz >= 250 && hz < 1000) { a1 += p * hz; b1 += p; }
       if (hz >= 900 && hz < 2800) { a2 += p * hz; b2 += p; }
+      if (hz >= 300 && hz < 3400) ev += p;
       if (hz >= 4000 && hz < 7500) es += p;
       else if (hz >= 1500 && hz < 4000) efm += p;
       if (k >= l0 && k < l1) el += p;
@@ -203,6 +205,7 @@ function extractFrames(x) {
     f2c[f] = b2 > 0 ? a2 / b2 : 0;
     sib[f] = es;
     fmid[f] = efm;
+    vband[f] = ev;
 
     // IFFT của phổ công suất = tự tương quan (dùng FFT xuôi vì phổ thực, đối xứng).
     fft(re, im);
@@ -223,7 +226,7 @@ function extractFrames(x) {
       pitch[f] = SR / (bestLag + clamp(off, -0.5, 0.5));
     }
   }
-  return { n, rms, low, mid, high, pitch, clarity, f1c, f2c, sib, fmid };
+  return { n, rms, low, mid, high, pitch, clarity, f1c, f2c, sib, fmid, vband };
 }
 
 // ---------- Bước 3 + 4: đặc trưng giọng nói -> chuyển động ----------
@@ -235,8 +238,11 @@ export async function analyzeAudio(audioBuffer) {
   const duration = x.length / SR;
 
   // Độ to chuẩn hóa theo nền nhiễu và đỉnh của chính bản ghi.
+  // Độ to đo trên dải tần giọng nói (300–3400 Hz) thay vì toàn dải: với nhạc nền dày (TikTok),
+  // trống và bass chiếm phần lớn năng lượng nên dao động của giọng gần như không thấy trên RMS.
   const db = new Float32Array(n);
-  for (let i = 0; i < n; i++) db[i] = 20 * Math.log10(fr.rms[i] + 1e-7);
+  for (let i = 0; i < n; i++) db[i] = 10 * Math.log10(fr.vband[i] + 1e-12);
+  const dbMax = percentile(db, 99.5);
   const floor = percentile(db, 12);
   const peak = percentile(db, 98);
   const gate = floor + Math.max(4, (peak - floor) * 0.18);
@@ -263,9 +269,11 @@ export async function analyzeAudio(audioBuffer) {
       const u = b.i > a.i ? (i - a.i) / (b.i - a.i) : 0;
       const pL = a.peak + (b.peak - a.peak) * u;
       const fL = a.floor + (b.floor - a.floor) * u;
-      const gateL = fL + Math.max(3, (pL - fL) * 0.2);
-      const local = clamp((db[i] - gateL) / Math.max(9, pL - gateL), 0, 1);
-      const trust = clamp((pL - floor - 8) / 8, 0, 1); // vùng có tín hiệu thật (không chỉ nhiễu)
+      // nhạc nén mạnh: giọng chỉ làm mức dao động vài dB, nên cho phép khoảng chuẩn hoá nhỏ
+      const gateL = fL + Math.max(1.5, (pL - fL) * 0.15);
+      const local = clamp((db[i] - gateL) / Math.max(6, pL - gateL), 0, 1);
+      // chỉ tin vùng có tín hiệu thật: trong khoảng 45 dB so với đoạn to nhất (không cần bài có chỗ lặng)
+      const trust = clamp((pL - (dbMax - 45)) / 10, 0, 1) * clamp((pL - floor - 2) / 4, 0, 1);
       loud[i] = Math.max(loud[i], local * trust);
     }
   }
@@ -452,6 +460,12 @@ export async function analyzeAudio(audioBuffer) {
   const f2lo = percentile(f2v, 10), f2hi = Math.max(f2lo + 150, percentile(f2v, 90));
   // nguyên mẫu nguyên âm trên mặt phẳng (F1, F2) đã chuẩn hoá 0..1
   const PROTO = { A: [0.9, 0.5], E: [0.3, 0.92], O: [0.6, 0.15], U: [0.12, 0.08] };
+  // độ mạnh âm gió (4–7.5 kHz) chuẩn hoá riêng, vì nằm ngoài dải giọng dùng để đo độ to
+  const dbS = new Float32Array(n);
+  for (let i = 0; i < n; i++) dbS[i] = 10 * Math.log10(fr.sib[i] + 1e-12);
+  const sFloor = percentile(dbS, 20), sPeak = Math.max(percentile(dbS, 99), sFloor + 10);
+  const sLoud = new Float32Array(n);
+  for (let i = 0; i < n; i++) sLoud[i] = clamp((dbS[i] - sFloor - 4) / (sPeak - sFloor - 4), 0, 1);
   const vis = { A: new Float32Array(n), E: new Float32Array(n), O: new Float32Array(n), U: new Float32Array(n),
     S: new Float32Array(n), F: new Float32Array(n), M: new Float32Array(n) };
   for (let i = 0; i < n; i++) {
@@ -467,16 +481,16 @@ export async function analyzeAudio(audioBuffer) {
       }
       const strength = Math.min(1, lv * 3);
       for (const k of Object.keys(PROTO)) vis[k][i] = (w[k] / sum) * strength;
-    } else if (!voiced[i] && lv > 0.03 && fric[i] > 0.3) {
+    } else if (!voiced[i] && fric[i] > 0.3 && (lv > 0.03 || sLoud[i] > 0.3)) {
       // âm gió: s/x (năng lượng 4–7.5 kHz mạnh) hay f/v/th (phẳng, yếu hơn)
       const sr = fr.sib[i] / (fr.sib[i] + fr.fmid[i] + 1e-12);
-      const k = Math.min(1, lv * 4);
+      const k = Math.min(1, Math.max(lv * 4, sLoud[i] * 1.4));
       const sOrF = clamp((sr - 0.35) / 0.3, 0, 1);
       vis.S[i] = k * sOrF;
       vis.F[i] = k * (1 - sOrF) * 0.9;
     }
     // đang trong câu mà gần như im lặng = môi mím (m, b, p hoặc ngắt giữa các từ)
-    if (active[i] && lv < 0.08) vis.M[i] = 1 - lv / 0.08;
+    if (active[i] && lv < 0.08 && sLoud[i] < 0.3) vis.M[i] = (1 - lv / 0.08) * (1 - sLoud[i] / 0.3);
   }
   const V = {};
   for (const k of Object.keys(vis)) V[k] = shift(smoothAR(vis[k], 0.035, 0.08), -2);
