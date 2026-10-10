@@ -27,7 +27,6 @@ jobs:
       - run: npm run build
         env:
           VITE_TIKTOK_PROXY: ${{ vars.TIKTOK_PROXY }}
-          VITE_YT_API: ${{ vars.YT_API }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -37,14 +37,6 @@ ghi âm giọng nói của bạn rồi "nói lại" với chuyển động miệ
 
 Trang riêng, dùng chung toàn bộ tính năng trên, thêm:
 
-- **Link YouTube** (dùng chung ô nhập với TikTok): `youtu.be/…`, `youtube.com/watch?v=…`, `/shorts/…`.
-  App thử lần lượt các máy chủ mã nguồn mở [Piped](https://github.com/TeamPiped/Piped) và
-  [Invidious](https://invidious.io) để lấy file video/âm thanh có CORS:
-  - lấy được video → video làm nền, âm thanh để hươu nói theo (giống TikTok, xuất video được);
-  - chỉ lấy được âm thanh → trình phát YouTube chính thức làm nền, chạy đồng bộ khi phát lại;
-  - không máy chủ nào trả lời → video YouTube vẫn làm nền (tắt tiếng) nhưng hươu không nói theo được.
-  Các máy chủ công cộng hay thay đổi; có thể chỉ định máy chủ Piped riêng bằng `?ytapi=<địa chỉ API>`
-  hoặc biến repo `YT_API`.
 - **Sóng nhạc (music spectrum)**: nhiều đường sóng phát sáng màu xanh ngọc → tím → hồng, biên độ theo phổ
   tần số của âm thanh đang phát/ghi. Chọn kiểu trong bảng **Ảnh nền**: *Sóng phát sáng*, *Cột trắng*
   (cột mảnh mọc lên từ đường chấm như visualizer trên video nhạc) hoặc *Tắt*; sóng cũng được ghép vào video khi xuất.

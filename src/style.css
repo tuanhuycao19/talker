@@ -56,19 +56,6 @@ html, body {
   object-fit: contain;
 }
 
-.yt-host {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-}
-.yt-host[hidden] { display: none; }
-.yt-host iframe {
-  width: min(100vw, calc(100vh * 16 / 9));
-  height: min(100vh, calc(100vw * 9 / 16));
-  border: 0;
-}
 .spectrum {
   position: fixed;
   inset: 0;
@@ -86,7 +73,6 @@ html, body {
   background: linear-gradient(90deg, #22d3ee, #8b5cf6, #d946ef);
   vertical-align: 2px;
 }
-.tt-row .yt-logo { margin-right: -4px; }
 .spec-toggle { padding: 4px 4px 4px 12px; }
 .spec-toggle select { padding: 6px 8px; font-size: 13px; }
 
