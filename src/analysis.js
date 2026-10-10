@@ -7,7 +7,7 @@
 //   3. Suy ra các đặc trưng: độ to, hữu thanh/vô thanh, độ "dẹt" của nguyên âm,
 //      điểm nhấn âm tiết (onset), các cụm câu (phrase) ngăn cách bởi khoảng lặng.
 //   4. Sinh track chuyển động: mở miệng, hình miệng, gật đầu theo nhấn âm,
-//      nghiêng/xoay đầu theo câu, tai, chớp mắt, nhún người, vẫy đuôi...
+//      tai, chớp mắt, nhún người, vẫy đuôi... (đầu luôn nhìn thẳng)
 
 export const FPS = 60;
 const SR = 16000;
@@ -326,7 +326,7 @@ export async function analyzeAudio(audioBuffer) {
 
   const rand = rng(Math.round(duration * 1000) + n * 7 + onsets.length * 131);
 
-  // ---- Đầu: gật theo nhấn âm, ngẩng theo cao độ, xoay/nghiêng theo câu ----
+  // ---- Đầu: gật theo nhấn âm, ngẩng theo cao độ ----
   const nodImp = new Float32Array(n);
   const bounceImp = new Float32Array(n);
   const earImpL = new Float32Array(n);
@@ -350,28 +350,10 @@ export async function analyzeAudio(audioBuffer) {
   const earFlickR = springTrack(n, earImpR, 4, 0.3);
   const eyePop = springTrack(n, eyeImp, 2.5, 0.8);
 
-  const yawTarget = new Float32Array(n);
-  const rollTarget = new Float32Array(n);
+  // Đầu luôn nhìn thẳng (không xoay/nghiêng sang bên); mắt chỉ liếc rất nhẹ.
   const lookXT = new Float32Array(n);
   const lookYT = new Float32Array(n);
   {
-    let yaw = 0, roll = 0;
-    let pi = 0;
-    let side = rand() < 0.5 ? -1 : 1;
-    for (let i = 0; i < n; i++) {
-      while (pi < realPhrases.length && realPhrases[pi].end <= i) pi++;
-      const ph = realPhrases[pi];
-      if (ph && i === ph.start) {
-        side = -side;
-        yaw = side * (0.015 + rand() * 0.03);
-        roll = -side * (0.015 + rand() * 0.03);
-      }
-      const inPhrase = ph && i >= ph.start && i < ph.end;
-      yawTarget[i] = inPhrase ? yaw : yaw * 0.3;
-      // cao độ lên cuối câu (câu hỏi) -> nghiêng đầu nhiều hơn
-      rollTarget[i] = inPhrase ? roll + pitchRel[i] * 0.025 * Math.sign(roll || 1) : 0;
-    }
-    // ánh mắt: liếc nhẹ theo hướng xoay đầu + vài cú liếc ngẫu nhiên
     let lx = 0, ly = 0;
     for (let i = 0; i < n; i++) {
       if (i % Math.round(FPS * (0.9 + rand() * 1.5)) === 0) {
@@ -382,8 +364,6 @@ export async function analyzeAudio(audioBuffer) {
       lookYT[i] = ly + pitchRel[i] * 0.25;
     }
   }
-  const headYaw = smoothZeroPhase(yawTarget, 0.18);
-  const headRoll = smoothZeroPhase(rollTarget, 0.22);
   const lookX = smoothT(lookXT, 0.04);
   const lookY = smoothT(lookYT, 0.04);
 
@@ -393,7 +373,6 @@ export async function analyzeAudio(audioBuffer) {
 
   const headPitch = new Float32Array(n);
   const neckPitch = new Float32Array(n);
-  const neckYaw = smoothT(headYaw, 0.35);
   const earL = new Float32Array(n);
   const earR = new Float32Array(n);
   const eyeWide = new Float32Array(n);
@@ -411,8 +390,6 @@ export async function analyzeAudio(audioBuffer) {
     squash[i] = Math.max(0, -bounce[i]) * 0.6;
     tail[i] = Math.sin(t * (6 + energy[i] * 6)) * (0.15 + energy[i] * 0.45) * activity[i];
   }
-  const headYawFinal = new Float32Array(n);
-  for (let i = 0; i < n; i++) headYawFinal[i] = headYaw[i] - neckYaw[i] * 0.4;
 
   // ---- Chớp mắt: đầu câu, cuối câu và ngẫu nhiên mỗi 2–5 giây ----
   const blinkTimes = [];
@@ -435,7 +412,7 @@ export async function analyzeAudio(audioBuffer) {
   }
 
   const tracks = {
-    jaw, wide, headPitch, headYaw: headYawFinal, headRoll, neckPitch, neckYaw,
+    jaw, wide, headPitch, neckPitch,
     earL, earR, eyeWide, blink, lookX, lookY, bodyY, squash, tail,
   };
 
