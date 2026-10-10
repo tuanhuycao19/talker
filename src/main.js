@@ -1260,6 +1260,7 @@ const MOUTH_KEYS = new Set(['jaw', 'stretch', 'pucker', 'upperRaise', 'lowerDrop
 
 const POSE_KEYS = [
   ...MOUTH_KEYS, 'smile', 'smileAsym', 'mouthShift',
+  'sit', 'sway', 'armRaiseL', 'armRaiseR', 'armSpreadL', 'armSpreadR', 'elbowL', 'elbowR',
   'headPitch', 'headYaw', 'headRoll', 'neckPitch', 'neckYaw', 'neckRoll',
   'earL', 'earR', 'eyeWide', 'blink', 'lookX', 'lookY', 'bodyY', 'squash', 'breath', 'tail', 'tailLift',
 ];

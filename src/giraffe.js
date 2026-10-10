@@ -100,31 +100,61 @@ export function createGiraffe() {
 
   const sphere = new THREE.SphereGeometry(1, 48, 32);
 
-  // ---------- Chân ----------
-  const legGeo = new THREE.CylinderGeometry(0.1, 0.125, 1.0, 32, 8);
+  // ---------- Khung xương: thân xoay quanh hông sau (để ngồi), chân có khớp ----------
+  // torso: điểm xoay ở hông sau. Thân, cổ, đầu, đuôi và hai chân trước (tay) gắn vào torso.
+  const HIP_Y = 1.12, HIP_Z = -0.36, FRONT_Z = 0.36;
+  const torso = new THREE.Group();
+  torso.position.set(0, HIP_Y, HIP_Z);
+  root.add(torso);
+
+  const LEG_SEG = 0.5; // đùi = cẳng = 0.5
+  const thighGeo = new THREE.CylinderGeometry(0.104, 0.112, LEG_SEG + 0.02, 28);
+  const shinGeo = new THREE.CylinderGeometry(0.112, 0.124, LEG_SEG, 28);
   const hoofGeo = new THREE.CylinderGeometry(0.128, 0.145, 0.15, 32);
-  const legs = new THREE.Group();
+  const legs = new THREE.Group(); // chân sau (đứng trên đất)
   root.add(legs);
-  const legDefs = [
-    [0.27, 0.36],
-    [-0.27, 0.36],
-    [0.25, -0.36],
-    [-0.25, -0.36],
-  ];
-  for (const [x, z] of legDefs) {
-    const g = new THREE.Group();
-    g.position.set(x, 0, z);
-    g.add(mesh(legGeo, yellow, { pos: [0, 0.62, 0] }));
-    g.add(mesh(hoofGeo, hoofMat, { pos: [0, 0.075, 0] }));
-    // một đốm nhỏ trên đùi
-    g.add(mesh(sphere, spot, { pos: [x > 0 ? 0.075 : -0.075, 0.9, z > 0 ? 0.06 : -0.06], scale: [0.045, 0.05, 0.045] }));
-    legs.add(g);
+
+  // Một chân 2 khúc: hip (xoay) -> đùi -> knee (xoay) -> cẳng -> ankle (giữ móng phẳng) -> móng
+  function makeLeg(parent, x, y, z, side) {
+    const hip = new THREE.Group();
+    hip.position.set(x, y, z);
+    parent.add(hip);
+    hip.add(mesh(thighGeo, yellow, { pos: [0, -LEG_SEG / 2, 0] }));
+    hip.add(mesh(sphere, spot, { pos: [side * 0.07, -0.22, 0.06], scale: [0.045, 0.05, 0.045] }));
+    const knee = new THREE.Group();
+    knee.position.set(0, -LEG_SEG, 0);
+    hip.add(knee);
+    knee.add(mesh(sphere, yellow, { scale: [0.112, 0.112, 0.112] }));
+    knee.add(mesh(shinGeo, yellow, { pos: [0, -LEG_SEG / 2, 0] }));
+    const ankle = new THREE.Group();
+    ankle.position.set(0, -LEG_SEG, 0);
+    knee.add(ankle);
+    ankle.add(mesh(hoofGeo, hoofMat, { pos: [0, -0.045, 0] }));
+    return { hip, knee, ankle, side };
+  }
+  const hindL = makeLeg(legs, -0.25, HIP_Y, HIP_Z, -1);
+  const hindR = makeLeg(legs, 0.25, HIP_Y, HIP_Z, 1);
+  // chân trước gắn vào torso (toạ độ tương đối với hông sau)
+  const armL = makeLeg(torso, -0.27, 0, FRONT_Z - HIP_Z, -1);
+  const armR = makeLeg(torso, 0.27, 0, FRONT_Z - HIP_Z, 1);
+
+  // IK 2 khúc trong mặt phẳng dọc: đặt cổ chân tại (dz, dy) so với hông, gối hướng ra trước.
+  function solveLeg(leg, dz, dy) {
+    const d = Math.min(LEG_SEG * 2 - 1e-4, Math.max(0.05, Math.hypot(dz, dy)));
+    const alpha = Math.atan2(dz, -dy); // góc so với phương thẳng đứng, dương = ra trước
+    const beta = Math.acos(THREE.MathUtils.clamp(d / (2 * LEG_SEG), -1, 1));
+    const thigh = alpha + beta;
+    const bend = 2 * beta; // gập gối (đùi và cẳng bằng nhau)
+    leg.hip.rotation.set(-thigh, 0, 0);
+    leg.knee.rotation.set(bend, 0, 0);
+    leg.ankle.rotation.set(thigh - bend, 0, 0); // móng luôn nằm phẳng
   }
 
   // ---------- Thân ----------
   const body = new THREE.Group();
-  body.position.set(0, 1.36, 0);
-  root.add(body);
+  const BODY_Y = 1.36 - HIP_Y, BODY_Z = -HIP_Z;
+  body.position.set(0, BODY_Y, BODY_Z);
+  torso.add(body);
   const BA = 0.5, BB = 0.42, BC = 0.68;
   const bodyGeo = paintByNormal(new THREE.SphereGeometry(1, 48, 32), (x, y) => smooth(0.45, 0.8, -y));
   body.add(mesh(bodyGeo, yellowV, { scale: [BA, BB, BC] }));
@@ -338,17 +368,49 @@ export function createGiraffe() {
     neck.add(mesh(sphere, tuftMat, { pos: [0, h, -radius + 0.01], scale: [0.04, 0.09, 0.05] }));
   }
 
-  const parts = { body, neck, head, muzzle, jaw, upper, lower, cavity, tongue, eyes, ears, tail, legs };
+  const parts = { torso, body, neck, head, muzzle, jaw, upper, lower, cavity, tongue, eyes, ears, tail, legs, arms: [armL, armR] };
 
   // Áp dụng tư thế (pose) cho mô hình. Mọi giá trị đều tương đối, mặc định 0.
   function setPose(p) {
+    // Ngồi xuống: hạ hông, ngả thân ra sau (đầu ngẩng), hai chân sau gập lại kiểu chó ngồi.
+    const sit = THREE.MathUtils.clamp(p.sit || 0, 0, 1);
+    const sitE = sit * sit * (3 - 2 * sit);
+    const hipY = HIP_Y - sitE * 0.56;
+    torso.position.y = hipY;
+    torso.rotation.set(-sitE * 0.62, 0, (p.sway || 0));
+    for (const leg of [hindL, hindR]) {
+      // khi ngồi, móng sau đặt lùi ra trước một chút; khi đứng thẳng thì ngay dưới hông
+      solveLeg(leg, sitE * 0.32, -(hipY - 0.12));
+      leg.hip.position.y = hipY;
+    }
+
+    // Tay (chân trước): đứng thì chống đất; giơ/dang/gập khuỷu theo track; ngồi thì rảnh hoàn toàn.
+    for (const arm of [armL, armR]) {
+      const s = arm.side < 0 ? 'L' : 'R';
+      const raise = THREE.MathUtils.clamp(p['armRaise' + s] || 0, 0, 1.2);
+      const spread = THREE.MathUtils.clamp(p['armSpread' + s] || 0, 0, 1);
+      const elbow = THREE.MathUtils.clamp(p['elbow' + s] || 0, 0, 1);
+      // bù góc ngả của thân để tay lúc nghỉ vẫn buông thẳng xuống đất
+      // giơ tay chủ yếu ra hai bên rồi lên cao (dễ thấy từ chính diện), hơi đưa ra trước cho khỏi chạm thân
+      // luôn bù góc ngả của thân (khi ngồi) để tay buông thẳng / giơ thẳng lên theo phương thế giới
+      const lift = Math.min(2.6, spread * 0.8 + raise * 2.0);
+      // chân đang chống đất (đứng, không giơ) bù độ nghiêng đung đưa của thân để vẫn thẳng đứng
+      const planted = (1 - sitE) * (1 - Math.min(1, raise * 2));
+      arm.hip.rotation.set(sitE * 0.62 - raise * 0.35 - sitE * 0.2 * (1 - Math.min(1, raise)), 0,
+        arm.side * (lift + sitE * 0.12) - (p.sway || 0) * planted);
+      // khuỷu cong lên phía trên (cùng chiều nâng tay)
+      arm.knee.rotation.set(-sitE * 0.35 * (1 - raise), 0, arm.side * elbow * 1.4);
+      arm.ankle.rotation.set(0, 0, 0);
+    }
+
     // Thân: nhún/thở
-    body.position.y = 1.36 + (p.bodyY || 0);
+    body.position.y = BODY_Y + (p.bodyY || 0);
     body.scale.set(1 + (p.breath || 0) * 0.5, 1 - (p.squash || 0) + (p.breath || 0), 1);
     body.rotation.z = (p.bodyRoll || 0);
     root.rotation.y = p.turn || 0;
 
-    neck.rotation.set(0.0 + (p.neckPitch || 0), p.neckYaw || 0, p.neckRoll || 0);
+    // cổ bù lại phần thân ngả khi ngồi để đầu vẫn nhìn thẳng
+    neck.rotation.set(sitE * 0.5 + (p.neckPitch || 0), p.neckYaw || 0, p.neckRoll || 0);
     head.rotation.set(p.headPitch || 0, p.headYaw || 0, p.headRoll || 0, 'YXZ');
 
     // Miệng: hàm + môi biến dạng theo hình miệng (viseme)
