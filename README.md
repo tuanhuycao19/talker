@@ -46,6 +46,7 @@ Trang riêng, dùng chung toàn bộ tính năng trên, thêm:
   English hoặc tự nhận diện; mô hình *Nhanh* (~80 MB) hoặc *Chính xác hơn* (~250 MB), chỉ tải lần đầu rồi được lưu lại.
   Dùng GPU (WebGPU) nếu máy hỗ trợ, nếu không thì CPU. Phụ đề hiện trên màn hình khi phát lại, sửa được từng dòng,
   tải về dạng `.srt`, và được ghép vào video khi xuất.
+- **Ẩn/hiện hươu**: bỏ chọn *Hiện hươu* trong bảng **Ảnh nền** để chỉ còn nền, sóng nhạc và phụ đề (cả khi xuất video).
 - Nền mặc định **Tối** cho sóng nhạc nổi bật; lựa chọn nền lưu riêng với trang gốc.
 
 ## Chạy

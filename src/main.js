@@ -30,6 +30,7 @@ const ui = {
   exportBtn: $('exportBtn'),
   spectrum: $('spectrum'),
   specStyle: $('specStyle'),
+  giraffeShow: $('giraffeShow'),
   subBtn: $('subBtn'),
   caption: $('caption'),
   subDlg: $('subDlg'),
@@ -123,6 +124,7 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.ShadowM
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
+let shadowBlob; // bóng mềm dưới chân hươu
 {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
@@ -132,17 +134,26 @@ scene.add(ground);
   grad.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, 128, 128);
-  const blob = new THREE.Mesh(
+  shadowBlob = new THREE.Mesh(
     new THREE.PlaneGeometry(1.8, 2.2),
     new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }),
   );
-  blob.rotation.x = -Math.PI / 2;
-  blob.position.y = 0.002;
-  scene.add(blob);
+  shadowBlob.rotation.x = -Math.PI / 2;
+  shadowBlob.position.y = 0.002;
+  scene.add(shadowBlob);
 }
 
 const giraffe = createGiraffe();
 scene.add(giraffe.root);
+
+// V3: ẩn/hiện chú hươu (cùng bóng dưới chân). Ẩn thì chỉ còn nền, sóng nhạc và phụ đề.
+let giraffeVisible = true;
+function setGiraffeVisible(v) {
+  giraffeVisible = v;
+  giraffe.root.visible = v;
+  ground.visible = v;
+  shadowBlob.visible = v;
+}
 
 function fitCamera() {
   if (exportState.active) return; // đang xuất video: giữ kích thước khung xuất
@@ -463,7 +474,7 @@ function startPlayback(offset = 0, { extraDest = null, onEnd = null } = {}) {
   state.mode = 'playing';
   ui.playBtn.classList.add('playing');
   ui.playBtn.querySelector('.label').textContent = 'Dừng';
-  setStatus('Hươu đang nói… 🦒💬');
+  setStatus(giraffeVisible ? 'Hươu đang nói… 🦒💬' : 'Đang phát… 🎵');
 }
 
 function stopPlayback() {
@@ -831,7 +842,7 @@ function drawExportFrame() {
     if (layer.width !== W || layer.height !== H) { layer.width = W; layer.height = H; }
     const lg = layer.getContext('2d');
     lg.clearRect(0, 0, W, H);
-    spectrum.draw(lg, W, H, performance.now() / 1000, { ...SPEC_POS, style: specStyle });
+    spectrum.draw(lg, W, H, performance.now() / 1000, { ...specPos(), style: specStyle });
     g.drawImage(layer, 0, 0);
   }
   g.drawImage(renderer.domElement, 0, 0, W, H);
@@ -1021,6 +1032,8 @@ document.addEventListener('keydown', (e) => e.key === 'Escape' && !ui.exportDlg.
 
 const spectrum = IS_V3 && ui.spectrum ? createSpectrum() : null;
 const SPEC_POS = { y: 0.6, amp: 0.16 };
+// không có hươu thì đặt sóng nhạc ở giữa khung
+const specPos = () => (giraffeVisible ? SPEC_POS : { ...SPEC_POS, y: 0.5 });
 // Kiểu sóng: 'wave' (sóng phát sáng), 'bars' (cột trắng), 'off' (tắt)
 let specStyle = 'wave';
 let specOn = true;
@@ -1043,6 +1056,15 @@ if (spectrum) {
   });
 }
 
+if (ui.giraffeShow) {
+  try { setGiraffeVisible(localStorage.getItem('talker.v3.showGiraffe') !== '0'); } catch { /* mặc định hiện */ }
+  ui.giraffeShow.checked = giraffeVisible;
+  ui.giraffeShow.addEventListener('change', () => {
+    setGiraffeVisible(ui.giraffeShow.checked);
+    try { localStorage.setItem('talker.v3.showGiraffe', giraffeVisible ? '1' : '0'); } catch { /* bỏ qua */ }
+  });
+}
+
 function drawSpectrum(dt) {
   const an = state.mode === 'playing' ? state.specAnalyser : state.mode === 'recording' ? state.micAnalyser : null;
   spectrum.update(an, dt);
@@ -1055,7 +1077,7 @@ function drawSpectrum(dt) {
   g.clearRect(0, 0, w, h);
   // đặt sóng ngang thân hươu (hươu được dịch lên để chừa chỗ cho khung điều khiển)
   const dock = document.body.classList.contains('ui-hidden') ? 0 : (document.querySelector('.dock')?.offsetHeight || 0);
-  spectrum.draw(g, w, h, performance.now() / 1000, { y: 0.6 - (dock / window.innerHeight) * 0.45, amp: SPEC_POS.amp, style: specStyle });
+  spectrum.draw(g, w, h, performance.now() / 1000, { y: specPos().y - (dock / window.innerHeight) * 0.45, amp: SPEC_POS.amp, style: specStyle });
 }
 
 

@@ -74,6 +74,7 @@ html, body {
   vertical-align: 2px;
 }
 .spec-toggle { padding: 4px 4px 4px 12px; }
+#giraffeShow { width: 18px; height: 18px; accent-color: var(--accent-strong); margin-left: 6px; }
 .spec-toggle select { padding: 6px 8px; font-size: 13px; }
 
 #scene {
