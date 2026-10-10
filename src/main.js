@@ -57,23 +57,6 @@ controls.minDistance = 4;
 controls.maxDistance = 18;
 controls.minPolarAngle = Math.PI * 0.2;
 controls.maxPolarAngle = Math.PI * 0.53;
-controls.minAzimuthAngle = -0.6;
-controls.maxAzimuthAngle = 0.6;
-// Sau khi người dùng xoay camera và thả tay, camera tự quay về chính diện.
-const FRONT_POLAR = Math.acos((camera.position.y - TARGET.y) / camera.position.distanceTo(TARGET));
-let dragging = false;
-controls.addEventListener('start', () => { dragging = true; });
-controls.addEventListener('end', () => { dragging = false; });
-const camSph = new THREE.Spherical();
-function returnCameraToFront(dt) {
-  if (dragging) return;
-  const off = camera.position.clone().sub(controls.target);
-  camSph.setFromVector3(off);
-  const k = 1 - Math.exp(-dt * 5);
-  camSph.theta += (0 - camSph.theta) * k;
-  camSph.phi += (FRONT_POLAR - camSph.phi) * k;
-  camera.position.copy(controls.target).add(off.setFromSpherical(camSph));
-}
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0xd8c7a0, 1.1));
 const key = new THREE.DirectionalLight(0xfff4e0, 2.4);
@@ -622,7 +605,6 @@ function frame() {
   }
 
   giraffe.setPose(pose);
-  returnCameraToFront(dt);
   controls.update();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
