@@ -87,7 +87,8 @@ html, body {
   vertical-align: 2px;
 }
 .tt-row .yt-logo { margin-right: -4px; }
-.spec-toggle input { width: 18px; height: 18px; accent-color: #8b5cf6; }
+.spec-toggle { padding: 4px 4px 4px 12px; }
+.spec-toggle select { padding: 6px 8px; font-size: 13px; }
 
 #scene {
   position: fixed;
@@ -196,7 +197,7 @@ button:focus-visible, .btn:focus-within, select:focus-visible { outline: 3px sol
   backdrop-filter: blur(14px);
   box-shadow: var(--shadow);
   border: 1px solid var(--border);
-  z-index: 5;
+  z-index: 11; /* nằm trên nút ẩn/hiện */
 }
 .panel[hidden] { display: none; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }

@@ -30,7 +30,7 @@ const ui = {
   exportBtn: $('exportBtn'),
   ytHost: $('ytHost'),
   spectrum: $('spectrum'),
-  specToggle: $('specToggle'),
+  specStyle: $('specStyle'),
   exportDlg: $('exportDlg'),
   exportClose: $('exportClose'),
   exportCanvas: $('exportCanvas'),
@@ -924,7 +924,7 @@ function drawExportFrame() {
     if (layer.width !== W || layer.height !== H) { layer.width = W; layer.height = H; }
     const lg = layer.getContext('2d');
     lg.clearRect(0, 0, W, H);
-    spectrum.draw(lg, W, H, performance.now() / 1000, SPEC_POS);
+    spectrum.draw(lg, W, H, performance.now() / 1000, { ...SPEC_POS, style: specStyle });
     g.drawImage(layer, 0, 0);
   }
   g.drawImage(renderer.domElement, 0, 0, W, H);
@@ -1115,15 +1115,25 @@ document.addEventListener('keydown', (e) => e.key === 'Escape' && !ui.exportDlg.
 
 const spectrum = IS_V3 && ui.spectrum ? createSpectrum() : null;
 const SPEC_POS = { y: 0.6, amp: 0.16 };
+// Kiểu sóng: 'wave' (sóng phát sáng), 'bars' (cột trắng), 'off' (tắt)
+let specStyle = 'wave';
 let specOn = true;
 if (spectrum) {
-  try { specOn = localStorage.getItem('talker.v3.spectrum') !== '0'; } catch { /* mặc định bật */ }
-  ui.specToggle.checked = specOn;
-  ui.spectrum.hidden = !specOn;
-  ui.specToggle.addEventListener('change', () => {
-    specOn = ui.specToggle.checked;
+  try {
+    const saved = localStorage.getItem('talker.v3.spectrumStyle');
+    if (saved) specStyle = saved;
+    else if (localStorage.getItem('talker.v3.spectrum') === '0') specStyle = 'off'; // cài đặt cũ (bật/tắt)
+  } catch { /* mặc định */ }
+  const apply = () => {
+    specOn = specStyle !== 'off';
+    ui.specStyle.value = specStyle;
     ui.spectrum.hidden = !specOn;
-    try { localStorage.setItem('talker.v3.spectrum', specOn ? '1' : '0'); } catch { /* bỏ qua */ }
+  };
+  apply();
+  ui.specStyle.addEventListener('change', () => {
+    specStyle = ui.specStyle.value;
+    apply();
+    try { localStorage.setItem('talker.v3.spectrumStyle', specStyle); } catch { /* bỏ qua */ }
   });
 }
 
@@ -1139,7 +1149,7 @@ function drawSpectrum(dt) {
   g.clearRect(0, 0, w, h);
   // đặt sóng ngang thân hươu (hươu được dịch lên để chừa chỗ cho khung điều khiển)
   const dock = document.body.classList.contains('ui-hidden') ? 0 : (document.querySelector('.dock')?.offsetHeight || 0);
-  spectrum.draw(g, w, h, performance.now() / 1000, { y: 0.6 - (dock / window.innerHeight) * 0.45, amp: SPEC_POS.amp });
+  spectrum.draw(g, w, h, performance.now() / 1000, { y: 0.6 - (dock / window.innerHeight) * 0.45, amp: SPEC_POS.amp, style: specStyle });
 }
 
 // ======================= Vòng lặp hoạt ảnh =======================

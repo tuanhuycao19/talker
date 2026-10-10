@@ -46,7 +46,8 @@ Trang riêng, dùng chung toàn bộ tính năng trên, thêm:
   Các máy chủ công cộng hay thay đổi; có thể chỉ định máy chủ Piped riêng bằng `?ytapi=<địa chỉ API>`
   hoặc biến repo `YT_API`.
 - **Sóng nhạc (music spectrum)**: nhiều đường sóng phát sáng màu xanh ngọc → tím → hồng, biên độ theo phổ
-  tần số của âm thanh đang phát/ghi. Bật/tắt trong bảng **Ảnh nền**; sóng cũng được ghép vào video khi xuất.
+  tần số của âm thanh đang phát/ghi. Chọn kiểu trong bảng **Ảnh nền**: *Sóng phát sáng*, *Cột trắng*
+  (cột mảnh mọc lên từ đường chấm như visualizer trên video nhạc) hoặc *Tắt*; sóng cũng được ghép vào video khi xuất.
 - Nền mặc định **Tối** cho sóng nhạc nổi bật; lựa chọn nền lưu riêng với trang gốc.
 
 ## Chạy

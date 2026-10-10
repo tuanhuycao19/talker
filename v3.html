@@ -45,9 +45,13 @@
           Tải ảnh của bạn
           <input id="bgFile" type="file" accept="image/*" />
         </label>
-        <label class="color-pick spec-toggle" title="Sóng nhạc">
-          <input id="specToggle" type="checkbox" checked />
+        <label class="color-pick spec-toggle" title="Kiểu sóng nhạc">
           <span>Sóng nhạc</span>
+          <select id="specStyle" aria-label="Kiểu sóng nhạc">
+            <option value="wave">Sóng phát sáng</option>
+            <option value="bars">Cột trắng</option>
+            <option value="off">Tắt</option>
+          </select>
         </label>
         <label class="color-pick" title="Màu trơn">
           <input id="bgColor" type="color" value="#cfe8ff" />

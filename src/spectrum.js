@@ -17,6 +17,8 @@ export function createSpectrum() {
   const levels = new Float32Array(BANDS); // mức đã làm mượt 0..1
   const peaks = new Float32Array(BANDS).fill(0.3); // đỉnh gần đây của từng dải (tự cân bằng)
   const shaped = new Float32Array(BANDS);
+  const bars = new Float32Array(BANDS); // phổ thật (không tự cân bằng) cho kiểu cột
+  let barPeak = 0.3;
   let freq = null;
 
   // Cập nhật mức từ analyser (hoặc tắt dần khi không có âm thanh).
@@ -42,6 +44,14 @@ export function createSpectrum() {
       // Giọng nói dồn năng lượng ở tần số thấp: chia cho đỉnh gần đây của từng dải để sóng trải đều
       // cả bề ngang, rồi nhân với độ to chung để im lặng thì sóng vẫn lặng.
       const loud = Math.min(1, (total / BANDS) * 3.2);
+      let mx = 0;
+      for (let b = 0; b < BANDS; b++) mx = Math.max(mx, raw[b] * (1 + (1.2 * b) / BANDS));
+      barPeak = Math.max(mx, barPeak * Math.exp(-dt * 0.25), 0.15);
+      for (let b = 0; b < BANDS; b++) {
+        const target = Math.pow((raw[b] * (1 + (1.2 * b) / BANDS)) / barPeak, 1.5);
+        const kb = target > bars[b] ? 1 - Math.exp(-dt * 35) : 1 - Math.exp(-dt * 9);
+        bars[b] += (target - bars[b]) * kb;
+      }
       for (let b = 0; b < BANDS; b++) {
         peaks[b] = Math.max(raw[b], peaks[b] * Math.exp(-dt * 0.35), 0.12);
         const target = Math.min(1, Math.pow(raw[b] / peaks[b], 1.6) * (0.35 + 0.65 * loud) * Math.min(1, loud * 4));
@@ -50,7 +60,10 @@ export function createSpectrum() {
       }
     } else {
       const k = 1 - Math.exp(-dt * 4);
-      for (let b = 0; b < BANDS; b++) levels[b] += (0 - levels[b]) * k;
+      for (let b = 0; b < BANDS; b++) {
+        levels[b] += (0 - levels[b]) * k;
+        bars[b] += (0 - bars[b]) * k * 2;
+      }
     }
   }
 
@@ -79,8 +92,43 @@ export function createSpectrum() {
     return Math.max(idle, v) * taper;
   }
 
+  // Kiểu "cột trắng": các cột mảnh mọc lên từ một đường chấm, như visualizer trên video nhạc.
+  function drawBars(g, W, H, t, { y = 0.6, amp = 0.17 } = {}) {
+    const span = Math.min(W * 0.62, H * 1.1); // bề rộng dải cột
+    const unit = Math.max(1.5, span / 230); // 1 cột = 1 đơn vị, khe = 1.6 đơn vị
+    const count = Math.floor(span / (unit * 2.6));
+    const x0 = (W - count * unit * 2.6) / 2;
+    const base = H * y + H * amp * 0.45; // cột mọc lên nên hạ đường gốc xuống một chút
+    const maxH = H * amp * 1.25;
+    g.save();
+    g.fillStyle = '#fff';
+    g.shadowColor = 'rgba(255,255,255,0.55)';
+    g.shadowBlur = unit * 2;
+    for (let i = 0; i < count; i++) {
+      const u = i / (count - 1);
+      // tần số thấp ở giữa-trái như mẫu: đọc dải tần theo vị trí, hơi nén phần cao
+      const f = Math.pow(u, 1.1) * (BANDS - 1);
+      const k = Math.floor(f);
+      const a = f - k;
+      const v = bars[k] * (1 - a) + (bars[Math.min(BANDS - 1, k + 1)] || 0) * a;
+      const taper = 0.35 + 0.65 * Math.pow(Math.sin(Math.PI * Math.min(1, u * 1.15)), 0.5);
+      const h = v * taper * maxH;
+      const x = x0 + i * unit * 2.6;
+      if (h < unit * 1.5) {
+        g.globalAlpha = 0.85;
+        g.fillRect(x, base - unit, unit, unit); // chấm nhỏ khi im lặng
+      } else {
+        g.globalAlpha = 0.95;
+        g.fillRect(x, base - h, unit, h);
+      }
+    }
+    g.restore();
+  }
+
   // Vẽ lên một context 2D bất kỳ (màn hình hoặc khung xuất video).
-  function draw(g, W, H, t, { y = 0.6, amp = 0.17 } = {}) {
+  function draw(g, W, H, t, opts = {}) {
+    if (opts.style === 'bars') return drawBars(g, W, H, t, opts);
+    const { y = 0.6, amp = 0.17 } = opts;
     const cy = H * y;
     const A = H * amp;
     const grad = g.createLinearGradient(W * 0.05, 0, W * 0.95, 0);
