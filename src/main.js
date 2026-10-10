@@ -5,6 +5,11 @@ import { createGiraffe } from './giraffe.js';
 import { analyzeAudio, samplePose } from './analysis.js';
 import { PRESETS, loadBackground, saveBackground, backgroundCss, backgroundImageUrl, readImageFile } from './backgrounds.js';
 import { isTikTokUrl, resolveTikTok, fetchTikTokVideo } from './tiktok.js';
+import { parseYouTubeId, resolveYouTube, fetchBlob, createYouTubePlayer } from './youtube.js';
+import { createSpectrum } from './spectrum.js';
+
+// Trang V3 (v3.html): thêm link YouTube và sóng nhạc. Trang gốc giữ nguyên.
+const IS_V3 = document.body.dataset.version === 'v3';
 
 const $ = (id) => document.getElementById(id);
 const ui = {
@@ -23,6 +28,9 @@ const ui = {
   ttUrl: $('ttUrl'),
   ttBtn: $('ttBtn'),
   exportBtn: $('exportBtn'),
+  ytHost: $('ytHost'),
+  spectrum: $('spectrum'),
+  specToggle: $('specToggle'),
   exportDlg: $('exportDlg'),
   exportClose: $('exportClose'),
   exportCanvas: $('exportCanvas'),
@@ -231,7 +239,16 @@ function idlePose(t, dt) {
 
 let audioCtx = null;
 function getAudioCtx() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (IS_V3) {
+      // âm thanh phát lại đi qua analyser để vẽ sóng nhạc
+      state.specAnalyser = audioCtx.createAnalyser();
+      state.specAnalyser.fftSize = 2048;
+      state.specAnalyser.smoothingTimeConstant = 0.55;
+      state.specAnalyser.connect(audioCtx.destination);
+    }
+  }
   if (audioCtx.state === 'suspended') audioCtx.resume();
   return audioCtx;
 }
@@ -260,6 +277,10 @@ const state = {
   // nền video (TikTok hoặc file video); videoLinked = âm thanh hiện tại lấy từ chính video này
   videoUrl: null,
   videoLinked: false,
+  // V3: nền YouTube (trình phát chính thức) và analyser cho sóng nhạc
+  yt: null,
+  ytLinked: false,
+  specAnalyser: null,
 };
 
 const MAX_REC_SECONDS = 60;
@@ -349,6 +370,7 @@ async function loadAudio(blob, { fromVideo = false, label = '' } = {}) {
     state.buffer = buffer;
     state.anim = anim;
     setVideoLinked(fromVideo);
+    setYouTubeLinked(false);
     state.waveform = computeWaveform(buffer, 600);
     if (state.blobUrl) URL.revokeObjectURL(state.blobUrl);
     state.blobUrl = URL.createObjectURL(blob);
@@ -399,7 +421,7 @@ function startPlayback(offset = 0, { extraDest = null, onEnd = null } = {}) {
   src.buffer = state.buffer;
   state.rate = parseFloat(ui.voice.value) || 1;
   src.playbackRate.value = state.rate;
-  src.connect(ctx.destination);
+  src.connect(state.specAnalyser || ctx.destination);
   if (extraDest) src.connect(extraDest);
   src.onended = () => {
     if (state.source === src) {
@@ -407,6 +429,7 @@ function startPlayback(offset = 0, { extraDest = null, onEnd = null } = {}) {
       state.mode = 'idle';
       state.playhead = 0;
       if (state.videoLinked) ui.bgVideo.pause();
+      if (state.ytLinked) state.yt?.pauseVideo?.();
       ui.playBtn.classList.remove('playing');
       ui.playBtn.querySelector('.label').textContent = 'Phát lại';
       setStatus('Xong! Nhấn <b>Phát lại</b> để xem lại hoặc <b>Ghi âm</b> câu mới.');
@@ -424,6 +447,11 @@ function startPlayback(offset = 0, { extraDest = null, onEnd = null } = {}) {
     // âm thanh bắt đầu sau 50ms (playStartCtx), video chờ cùng nhịp
     setTimeout(() => state.source === src && ui.bgVideo.play().catch(() => {}), 50);
   }
+  if (state.ytLinked && state.yt?.seekTo) {
+    state.yt.seekTo(state.playOffset, true);
+    state.yt.setPlaybackRate?.(state.rate);
+    state.yt.playVideo();
+  }
   state.mode = 'playing';
   ui.playBtn.classList.add('playing');
   ui.playBtn.querySelector('.label').textContent = 'Dừng';
@@ -438,6 +466,7 @@ function stopPlayback() {
   }
   if (state.mode === 'playing') state.mode = 'idle';
   if (state.videoLinked) ui.bgVideo.pause();
+  if (state.ytLinked) state.yt?.pauseVideo?.();
   ui.playBtn.classList.remove('playing');
   ui.playBtn.querySelector('.label').textContent = 'Phát lại';
 }
@@ -532,6 +561,7 @@ const escapeHtml = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', 
 
 function showVideoBackground(src, poster = '') {
   const v = ui.bgVideo;
+  clearYouTube();
   ui.bgVideoWrap.hidden = false;
   ui.bgVideoBlur.style.backgroundImage = poster ? `url("${poster}")` : 'none';
   v.muted = true;
@@ -556,6 +586,7 @@ function showVideoBackground(src, poster = '') {
 function hideVideoBackground() {
   const v = ui.bgVideo;
   if (ui.bgVideoWrap.hidden) return;
+  clearYouTube();
   v.pause();
   v.removeAttribute('src');
   v.load();
@@ -583,9 +614,88 @@ function setVideoLinked(linked) {
   }
 }
 
+// ---------- Nền YouTube (V3) ----------
+
+function clearYouTube() {
+  if (!ui.ytHost) return;
+  try { state.yt?.destroy?.(); } catch { /* bỏ qua */ }
+  state.yt = null;
+  state.ytLinked = false;
+  ui.ytHost.innerHTML = '';
+  ui.ytHost.hidden = true;
+  ui.bgVideo.hidden = false;
+}
+
+async function showYouTubeBackground(id, thumb) {
+  hideVideoBackground();
+  ui.bgVideoWrap.hidden = false;
+  ui.bgVideo.hidden = true;
+  ui.ytHost.hidden = false;
+  ui.ytHost.dataset.thumb = thumb;
+  ui.bgVideoBlur.style.backgroundImage = `url("${thumb}")`;
+  for (const el of ui.presetGrid.children) el.classList.remove('active');
+  try {
+    const player = await createYouTubePlayer(ui.ytHost, id);
+    if (ui.ytHost.hidden) return player.destroy(); // đã đổi nền trong lúc chờ
+    state.yt = player;
+    if (state.ytLinked) player.pauseVideo();
+  } catch (err) {
+    console.warn(err);
+  }
+}
+
+// Âm thanh lấy từ YouTube: video nền chỉ chạy khi phát lại; ngược lại chạy lặp tắt tiếng.
+function setYouTubeLinked(linked) {
+  state.ytLinked = linked && !!ui.ytHost && !ui.ytHost.hidden;
+  const p = state.yt;
+  if (!p?.playVideo) return;
+  p.mute();
+  if (state.ytLinked) {
+    p.pauseVideo();
+    p.seekTo(0, true);
+  } else {
+    p.setPlaybackRate?.(1);
+    p.playVideo();
+  }
+}
+
+async function loadYouTube(id, thumb) {
+  showYouTubeBackground(id, thumb);
+  setStatus('Đang tìm luồng âm thanh YouTube…');
+  const info = await resolveYouTube(id, (kind, host) => setStatus(`Đang lấy âm thanh YouTube qua ${kind} (${escapeHtml(host)})…`));
+  const label = info.author || info.title || 'YouTube';
+  const progress = (what) => (loaded, total) => setStatus(`Đang tải ${what} ${escapeHtml(label)}… `
+    + `${total ? `${Math.round((loaded / total) * 100)}%` : `${(loaded / 1e6).toFixed(1)} MB`}`);
+  if (info.video) {
+    try {
+      const blob = await fetchBlob(info.video, progress('video'));
+      if (state.videoUrl) URL.revokeObjectURL(state.videoUrl);
+      state.videoUrl = URL.createObjectURL(blob);
+      showVideoBackground(state.videoUrl, info.thumbnail);
+      await loadAudio(blob, { fromVideo: true, label });
+      return;
+    } catch (err) {
+      console.warn('YouTube video', err);
+    }
+  }
+  if (info.audio) {
+    try {
+      const blob = await fetchBlob(info.audio, progress('âm thanh'));
+      await loadAudio(blob, { label });
+      if (state.anim) setYouTubeLinked(true);
+      return;
+    } catch (err) {
+      console.warn('YouTube audio', err);
+    }
+  }
+  setStatus('Đã đặt video YouTube làm nền, nhưng các máy chủ trung gian không trả về âm thanh nên hươu chưa nói theo được. '
+    + 'Hãy thử lại sau, hoặc tải âm thanh về rồi dùng <b>Mở file</b>.');
+}
+
 // ======================= Ảnh nền =======================
 
-let currentBg = loadBackground();
+const BG_KEY = IS_V3 ? 'talker.v3.background' : undefined;
+let currentBg = IS_V3 ? loadBackground(BG_KEY, { type: 'preset', id: 'dark' }) : loadBackground();
 
 function applyBackground(bg, persist = true) {
   if (persist) hideVideoBackground();
@@ -597,12 +707,13 @@ function applyBackground(bg, persist = true) {
     el.classList.toggle('active', bg.type === 'preset' && el.dataset.id === bg.id);
   }
   if (bg.type === 'color') ui.bgColor.value = bg.value;
-  if (persist && !saveBackground(bg)) {
+  if (persist && !saveBackground(bg, BG_KEY)) {
     setStatus('Đã đổi ảnh nền (ảnh quá lớn nên không lưu lại cho lần sau).');
   }
 }
 
 for (const p of PRESETS) {
+  if (p.v3 && !IS_V3) continue;
   const b = document.createElement('button');
   b.type = 'button';
   b.className = 'preset';
@@ -674,8 +785,11 @@ ui.audioFile.addEventListener('change', async () => {
 ui.ttForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const link = ui.ttUrl.value.trim();
-  if (!isTikTokUrl(link)) {
-    setStatus('Link chưa đúng. Hãy dán link video TikTok, ví dụ <b>https://vt.tiktok.com/…</b>');
+  const ytId = IS_V3 ? parseYouTubeId(link) : null;
+  if (!ytId && !isTikTokUrl(link)) {
+    setStatus(IS_V3
+      ? 'Link chưa đúng. Hãy dán link TikTok (<b>https://vt.tiktok.com/…</b>) hoặc YouTube (<b>https://youtu.be/…</b>)'
+      : 'Link chưa đúng. Hãy dán link video TikTok, ví dụ <b>https://vt.tiktok.com/…</b>');
     ui.ttUrl.focus();
     return;
   }
@@ -685,6 +799,10 @@ ui.ttForm.addEventListener('submit', async (e) => {
   ui.ttBtn.disabled = true;
   ui.recBtn.classList.add('busy');
   try {
+    if (ytId) {
+      await loadYouTube(ytId, `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`);
+      return;
+    }
     setStatus('Đang tìm video TikTok…');
     const info = await resolveTikTok(link);
     const label = info.author ? `@${info.author}` : 'TikTok';
@@ -766,6 +884,19 @@ function drawContain(g, src, sw, sh, W, H) {
 
 function drawExportBackground(g, W, H) {
   const v = ui.bgVideo;
+  if (!ui.bgVideoWrap.hidden && ui.ytHost && !ui.ytHost.hidden) {
+    // trình phát YouTube không vẽ được lên canvas – dùng ảnh thumbnail
+    g.fillStyle = '#111';
+    g.fillRect(0, 0, W, H);
+    const img = exportState.bgImage;
+    if (img) {
+      if ('filter' in g) g.filter = 'blur(28px) brightness(0.75) saturate(1.2)';
+      drawCover(g, img, img.naturalWidth, img.naturalHeight, W, H, 1.15);
+      g.filter = 'none';
+      drawContain(g, img, img.naturalWidth, img.naturalHeight, W, H);
+    }
+    return;
+  }
   if (!ui.bgVideoWrap.hidden) {
     g.fillStyle = '#111';
     g.fillRect(0, 0, W, H);
@@ -787,6 +918,15 @@ function drawExportBackground(g, W, H) {
 function drawExportFrame() {
   const { ctx2d: g, W, H } = exportState;
   drawExportBackground(g, W, H);
+  if (spectrum && specOn) {
+    // vẽ sóng lên lớp trong suốt riêng rồi ghép, để màu không bị "cộng sáng" thành trắng trên nền sáng
+    const layer = exportState.specLayer ||= document.createElement('canvas');
+    if (layer.width !== W || layer.height !== H) { layer.width = W; layer.height = H; }
+    const lg = layer.getContext('2d');
+    lg.clearRect(0, 0, W, H);
+    spectrum.draw(lg, W, H, performance.now() / 1000, SPEC_POS);
+    g.drawImage(layer, 0, 0);
+  }
   g.drawImage(renderer.domElement, 0, 0, W, H);
   if (state.anim) {
     const p = Math.min(1, state.playhead / state.anim.duration);
@@ -844,9 +984,11 @@ async function drawExportPreview() {
 
 async function loadExportBackground() {
   exportState.bgImage = null;
-  const url = ui.bgVideoWrap.hidden ? backgroundImageUrl(currentBg) : null;
+  const ytThumb = ui.ytHost && !ui.ytHost.hidden ? ui.ytHost.dataset.thumb : null;
+  const url = ytThumb || (ui.bgVideoWrap.hidden ? backgroundImageUrl(currentBg) : null);
   if (!url) return;
   const img = new Image();
+  if (ytThumb) img.crossOrigin = 'anonymous'; // không có CORS thì ảnh lỗi thay vì làm "bẩn" canvas
   img.src = url;
   try {
     await img.decode();
@@ -875,7 +1017,7 @@ async function startExport() {
     ui.exportMsg.textContent = 'Trình duyệt này không hỗ trợ xuất video. Hãy thử Chrome, Edge hoặc Safari mới.';
     return;
   }
-  if (!ui.bgVideoWrap.hidden && !ui.bgVideo.currentSrc.startsWith('blob:')) {
+  if (!ui.bgVideoWrap.hidden && !ui.bgVideo.hidden && !ui.bgVideo.currentSrc.startsWith('blob:')) {
     ui.exportMsg.textContent = 'Video nền này bị TikTok chặn nên không ghép vào video được. Hãy tải video về rồi dùng Mở file, hoặc cấu hình proxy.';
     return;
   }
@@ -969,6 +1111,37 @@ ui.exportStart.addEventListener('click', startExport);
 for (const r of ui.exportDlg.querySelectorAll('input[name="fmt"]')) r.addEventListener('change', drawExportPreview);
 document.addEventListener('keydown', (e) => e.key === 'Escape' && !ui.exportDlg.hidden && closeExportDialog());
 
+// ======================= Sóng nhạc (V3) =======================
+
+const spectrum = IS_V3 && ui.spectrum ? createSpectrum() : null;
+const SPEC_POS = { y: 0.6, amp: 0.16 };
+let specOn = true;
+if (spectrum) {
+  try { specOn = localStorage.getItem('talker.v3.spectrum') !== '0'; } catch { /* mặc định bật */ }
+  ui.specToggle.checked = specOn;
+  ui.spectrum.hidden = !specOn;
+  ui.specToggle.addEventListener('change', () => {
+    specOn = ui.specToggle.checked;
+    ui.spectrum.hidden = !specOn;
+    try { localStorage.setItem('talker.v3.spectrum', specOn ? '1' : '0'); } catch { /* bỏ qua */ }
+  });
+}
+
+function drawSpectrum(dt) {
+  const an = state.mode === 'playing' ? state.specAnalyser : state.mode === 'recording' ? state.micAnalyser : null;
+  spectrum.update(an, dt);
+  if (!specOn) return;
+  const c = ui.spectrum;
+  const dpr = 1; // nét sóng phát sáng, không cần độ phân giải cao – nhẹ cho điện thoại
+  const w = Math.round(c.clientWidth * dpr), h = Math.round(c.clientHeight * dpr);
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, w, h);
+  // đặt sóng ngang thân hươu (hươu được dịch lên để chừa chỗ cho khung điều khiển)
+  const dock = document.body.classList.contains('ui-hidden') ? 0 : (document.querySelector('.dock')?.offsetHeight || 0);
+  spectrum.draw(g, w, h, performance.now() / 1000, { y: 0.6 - (dock / window.innerHeight) * 0.45, amp: SPEC_POS.amp });
+}
+
 // ======================= Vòng lặp hoạt ảnh =======================
 
 const POSE_KEYS = [
@@ -1037,6 +1210,13 @@ function frame() {
     if (Math.abs(v.currentTime - state.playhead) > 0.15) v.currentTime = state.playhead;
     if (v.paused) v.play().catch(() => {});
   }
+
+  // Giữ nền YouTube khớp với âm thanh (kiểm tra mỗi ~0.5s)
+  if (state.ytLinked && state.mode === 'playing' && state.yt?.getCurrentTime && t - (frame.ytCheck || 0) > 0.5) {
+    frame.ytCheck = t;
+    if (Math.abs(state.yt.getCurrentTime() - state.playhead) > 0.35) state.yt.seekTo(state.playhead, true);
+  }
+  if (spectrum) drawSpectrum(dt);
 
   giraffe.setPose(pose);
   controls.update();

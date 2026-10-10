@@ -30,6 +30,15 @@ function stars(count, seed) {
 
 export const PRESETS = [
   {
+    id: 'dark',
+    name: 'Tối',
+    v3: true, // chỉ có ở trang V3 (hợp với sóng nhạc)
+    css: toUrl(svg(
+      `<rect width="1600" height="1000" fill="url(#g)"/>`,
+      `<radialGradient id="g" cx="50%" cy="45%" r="80%"><stop offset="0" stop-color="#262a33"/><stop offset="1" stop-color="#121418"/></radialGradient>`,
+    )),
+  },
+  {
     id: 'studio',
     name: 'Studio',
     css: toUrl(svg(
@@ -100,19 +109,19 @@ export const PRESETS = [
 
 const STORAGE_KEY = 'talker.background';
 
-export function loadBackground() {
+export function loadBackground(key = STORAGE_KEY, fallback = { type: 'preset', id: 'studio' }) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (raw) return JSON.parse(raw);
   } catch {
     /* không có storage – dùng mặc định */
   }
-  return { type: 'preset', id: 'studio' };
+  return fallback;
 }
 
-export function saveBackground(bg) {
+export function saveBackground(bg, key = STORAGE_KEY) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(bg));
+    localStorage.setItem(key, JSON.stringify(bg));
     return true;
   } catch {
     return false; // ảnh quá lớn hoặc storage bị chặn – vẫn áp dụng cho phiên hiện tại
@@ -122,7 +131,7 @@ export function saveBackground(bg) {
 export function backgroundCss(bg) {
   if (bg.type === 'color') return { image: 'none', color: bg.value };
   if (bg.type === 'image') return { image: `url("${bg.dataUrl}")`, color: '#ddd' };
-  const preset = PRESETS.find((p) => p.id === bg.id) || PRESETS[0];
+  const preset = PRESETS.find((p) => p.id === bg.id) || PRESETS.find((p) => p.id === 'studio');
   return { image: preset.css, color: '#eee' };
 }
 
@@ -152,6 +161,6 @@ export function readImageFile(file, maxSize = 1920) {
 export function backgroundImageUrl(bg) {
   if (bg.type === 'color') return null;
   if (bg.type === 'image') return bg.dataUrl;
-  const preset = PRESETS.find((p) => p.id === bg.id) || PRESETS[0];
+  const preset = PRESETS.find((p) => p.id === bg.id) || PRESETS.find((p) => p.id === 'studio');
   return preset.css.replace(/^url\("/, '').replace(/"\)$/, '');
 }
