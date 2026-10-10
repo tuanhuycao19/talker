@@ -67,6 +67,41 @@ html, body {
 
 svg { width: 18px; height: 18px; flex: none; }
 
+/* ---------- Ẩn/hiện giao diện ---------- */
+.ui-toggle {
+  position: fixed;
+  z-index: 10;
+  left: 16px;
+  top: calc(max(12px, env(safe-area-inset-top)) + 54px);
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow);
+  color: var(--fg);
+  cursor: pointer;
+  transition: opacity 0.2s, top 0.25s;
+}
+.ui-toggle .i-show { display: none; }
+body.ui-hidden .ui-toggle { top: max(12px, env(safe-area-inset-top)); opacity: 0.55; }
+body.ui-hidden .ui-toggle:hover, body.ui-hidden .ui-toggle:focus-visible { opacity: 1; }
+body.ui-hidden .ui-toggle .i-hide { display: none; }
+body.ui-hidden .ui-toggle .i-show { display: block; }
+.topbar, .dock, .status, .panel { transition: opacity 0.25s, transform 0.25s, visibility 0.25s; }
+body.ui-hidden .topbar,
+body.ui-hidden .dock,
+body.ui-hidden .status,
+body.ui-hidden .panel {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+body.ui-hidden .dock { transform: translate(-50%, 24px); }
+
 /* ---------- Thanh trên ---------- */
 .topbar {
   position: fixed;

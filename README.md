@@ -26,7 +26,9 @@ ghi âm giọng nói của bạn rồi "nói lại" với chuyển động miệ
   nền, âm thanh của video được phân tích để hươu "nói" theo; khi *Phát lại*, video nền chạy đồng bộ với tiếng.
   Nếu sau đó bạn ghi âm giọng mới, video vẫn làm nền (chạy lặp, tắt tiếng).
 - Mở file âm thanh **hoặc video** có sẵn (video sẽ làm nền + nguồn âm thanh); lưu bản ghi về máy.
-- Xoay/zoom camera bằng chuột hoặc chạm. Phím tắt: `R` ghi/dừng, `Space` phát/dừng.
+- Nút con mắt (góc trên bên trái) ẩn toàn bộ nút điều khiển để xem trọn video/ảnh nền; bấm lần nữa để hiện lại.
+- Thỉnh thoảng hươu nghiêng đầu sang một bên rồi trở lại tư thế thẳng.
+- Xoay/zoom camera bằng chuột hoặc chạm. Phím tắt: `R` ghi/dừng, `Space` phát/dừng, `H` ẩn/hiện nút.
 
 ## Chạy
 

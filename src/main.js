@@ -146,6 +146,9 @@ const idle = {
   nextEar: 3,
   earStart: -10,
   earSide: 1,
+  // nghiêng đầu thỉnh thoảng: nghiêng sang một bên, giữ một lúc rồi về giữa
+  nextTilt: 4,
+  tilt: null,
 };
 
 function idlePose(t, dt) {
@@ -172,11 +175,36 @@ function idlePose(t, dt) {
   const et = t - idle.earStart;
   const flick = et < 0.6 ? Math.sin(et * 30) * Math.exp(-et * 7) * 0.5 : 0;
 
+  if (t > idle.nextTilt && !idle.tilt) {
+    idle.tilt = {
+      start: t,
+      angle: (Math.random() < 0.5 ? -1 : 1) * (0.12 + Math.random() * 0.1),
+      rise: 0.45 + Math.random() * 0.25,
+      hold: 0.8 + Math.random() * 1.4,
+      fall: 0.6 + Math.random() * 0.3,
+    };
+  }
+  let headRoll = 0;
+  if (idle.tilt) {
+    const { start, angle, rise, hold, fall } = idle.tilt;
+    const tt = t - start;
+    const ease = (x) => x * x * (3 - 2 * x);
+    if (tt < rise) headRoll = angle * ease(tt / rise);
+    else if (tt < rise + hold) headRoll = angle;
+    else if (tt < rise + hold + fall) headRoll = angle * (1 - ease((tt - rise - hold) / fall));
+    else {
+      idle.tilt = null;
+      idle.nextTilt = t + 4 + Math.random() * 6;
+    }
+  }
+
   const breath = Math.sin(t * Math.PI * 2 * 0.28);
   return {
     breath: breath * 0.012,
     bodyY: breath * 0.008,
     headPitch: Math.sin(t * 0.7) * 0.03,
+    headRoll,
+    neckRoll: headRoll * 0.15,
     earL: Math.sin(t * 0.9) * 0.05 + (idle.earSide < 0 ? flick : 0),
     earR: Math.sin(t * 0.9 + 1) * 0.05 + (idle.earSide > 0 ? flick : 0),
     blink,
@@ -669,11 +697,22 @@ ui.ttForm.addEventListener('submit', async (e) => {
   }
 });
 
-// Phím tắt: R ghi/dừng, Space phát/dừng.
+// Ẩn/hiện toàn bộ nút điều khiển để xem trọn video/ảnh nền.
+const uiToggle = document.getElementById('uiToggle');
+function setUiHidden(hidden) {
+  document.body.classList.toggle('ui-hidden', hidden);
+  uiToggle.setAttribute('aria-pressed', String(hidden));
+  uiToggle.setAttribute('aria-label', hidden ? 'Hiện nút điều khiển' : 'Ẩn nút điều khiển');
+  if (hidden) togglePanel(false);
+}
+uiToggle.addEventListener('click', () => setUiHidden(!document.body.classList.contains('ui-hidden')));
+
+// Phím tắt: R ghi/dừng, Space phát/dừng, H ẩn/hiện nút.
 document.addEventListener('keydown', (e) => {
   if (e.target.closest('input, select, textarea')) return;
   if (e.code === 'KeyR') { e.preventDefault(); ui.recBtn.click(); }
   if (e.code === 'Space' && !ui.playBtn.disabled) { e.preventDefault(); ui.playBtn.click(); }
+  if (e.code === 'KeyH') { e.preventDefault(); uiToggle.click(); }
 });
 
 // ======================= Vòng lặp hoạt ảnh =======================
