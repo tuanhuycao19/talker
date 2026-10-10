@@ -1,0 +1,18 @@
+{
+  "name": "talker",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Hươu cao cổ 3D biết nói: ghi âm giọng nói, phân tích audio và tạo chuyển động khớp với giọng.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.11"
+  }
+}
