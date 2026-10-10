@@ -10,9 +10,11 @@ ghi âm giọng nói của bạn rồi "nói lại" với chuyển động miệ
 - **Phân tích audio → chuyển động** (chạy hoàn toàn trên trình duyệt, `src/analysis.js`):
   - Đưa audio về mono 16 kHz, tách 60 khung/giây; đo độ to (RMS), năng lượng theo dải tần và cao độ
     (tự tương quan qua FFT).
-  - **Miệng**: độ mở hàm theo độ to (mở nhanh, khép chậm), âm vô thanh/âm xì mở ít hơn; hình miệng
-    dẹt/tròn theo tỉ lệ năng lượng dải 900–2600 Hz so với 150–900 Hz (gần với formant F2 của nguyên âm).
-    Hình đi trước tiếng ~30 ms như hoạt hình chuyên nghiệp.
+  - **Miệng (viseme kiểu phim hoạt hình)**: mỗi khung được phân loại mềm thành các hình miệng A, E/I, O, U,
+    M/B/P (mím môi), S/X (lộ răng), F/V (răng trên cắn môi dưới) dựa trên formant F1/F2 chuẩn hoá theo giọng
+    người nói và năng lượng âm gió; chuyển tiếp mượt giữa các hình (coarticulation), hình đi trước tiếng ~30 ms.
+    Môi trên/dưới biến dạng thật (kéo căng, chu, mím, nhếch, trề, cắn môi), có hàm răng trên/dưới, lưỡi nâng
+    với âm "i", khoé miệng cười theo cao độ, mỗi câu lệch một bên và nói hơi lệch miệng cho có "diễn xuất".
   - **Đầu**: gật theo các điểm nhấn âm tiết (lò xo tắt dần), ngẩng lên khi giọng cao, xoay/nghiêng
     đổi hướng theo từng câu (câu được tách bằng khoảng lặng).
   - **Tai, mắt, thân, đuôi**: tai vểnh khi nói, giật nhẹ ở âm nhấn mạnh; mắt mở to khi cao giọng,

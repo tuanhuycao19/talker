@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 // Bảng màu lấy theo ảnh mẫu: thân vàng, bụng/cổ trước trắng, đốm cam,
 // mõm nâu, sừng có đầu tròn màu cam, móng xám.
@@ -86,7 +87,8 @@ export function createGiraffe() {
   const spot = toyMaterial(COLORS.spot, { roughness: 0.5 });
   const muzzleMat = toyMaterial(COLORS.muzzle, { side: THREE.DoubleSide, roughness: 0.5 });
   const nostrilMat = toyMaterial(COLORS.nostril, { roughness: 0.7, clearcoat: 0 });
-  const mouthMat = new THREE.MeshStandardMaterial({ color: COLORS.mouth, roughness: 0.9 });
+  // khoang miệng: chỉ vẽ mặt trong (vách sau) để răng, lưỡi bên trong không bị che
+  const mouthMat = new THREE.MeshStandardMaterial({ color: COLORS.mouth, roughness: 0.9, side: THREE.BackSide });
   const tongueMat = toyMaterial(COLORS.tongue, { roughness: 0.55 });
   const tipMat = toyMaterial(COLORS.tip);
   const tuftMat = toyMaterial(COLORS.tuft, { roughness: 0.6 });
@@ -187,7 +189,13 @@ export function createGiraffe() {
   const lowerGeo = new THREE.SphereGeometry(MR, 48, 24, 0, Math.PI * 2, Math.PI * 0.44, Math.PI * 0.56);
   const upper = mesh(upperGeo, muzzleMat, { scale: [1.2, 0.9, 1.0] });
   muzzle.add(upper);
-  const cavity = mesh(sphere, mouthMat, { scale: [MR * 1.1, MR * 0.75, MR * 0.86], pos: [0, -0.01, -0.01] });
+  const cavity = mesh(sphere, mouthMat, { scale: [MR * 1.08, MR * 0.66, MR * 0.95], pos: [0, -0.015, -0.01] });
+  // lớp tối phía sau răng che kín hai khoé miệng (không lộ phần đầu vàng bên trong)
+  const throat = mesh(sphere, new THREE.MeshStandardMaterial({ color: COLORS.mouth, roughness: 0.95 }), {
+    scale: [0.245, 0.075, 0.12], pos: [0, -0.02, -0.03],
+  });
+  throat.castShadow = false;
+  muzzle.add(throat);
   cavity.castShadow = false;
   muzzle.add(cavity);
   for (const sx of [-1, 1]) {
@@ -205,6 +213,66 @@ export function createGiraffe() {
   const tongue = mesh(sphere, tongueMat, { pos: [0, -0.05, 0.16], scale: [0.13, 0.05, 0.13] });
   tongue.castShadow = false;
   jaw.add(tongue);
+
+  // Răng: hàm trên 6 chiếc (2 răng cửa to kiểu hoạt hình) gắn vào mõm, hàm dưới 4 chiếc gắn vào hàm.
+  // Đặt lùi sau môi nên khi khép miệng thì bị che, chỉ lộ khi mở miệng / nhếch môi.
+  const toothMat = toyMaterial('#fffaf0', { roughness: 0.28, clearcoat: 0.8, clearcoatRoughness: 0.15 });
+  const addTeeth = (parent, specs, rx, rz, z0, yTop) => {
+    for (const [deg, w, h] of specs) {
+      const a = THREE.MathUtils.degToRad(deg);
+      const t = new THREE.Mesh(new RoundedBoxGeometry(w, h, 0.024, 2, Math.min(w, h) * 0.28), toothMat);
+      t.position.set(Math.sin(a) * rx, yTop - h / 2, z0 + Math.cos(a) * rz);
+      t.rotation.y = a;
+      t.castShadow = false;
+      parent.add(t);
+    }
+  };
+  // răng trên kéo dài lên trong môi để khi nhếch môi răng vẫn "mọc" từ lợi, không lơ lửng
+  addTeeth(muzzle, [[-8, 0.056, 0.09], [8, 0.056, 0.09], [-24, 0.052, 0.08], [24, 0.052, 0.08], [-39, 0.046, 0.072], [39, 0.046, 0.072]],
+    0.205, 0.163, 0, 0.012);
+  addTeeth(jaw, [[-8, 0.046, 0.05], [8, 0.046, 0.05], [-24, 0.042, 0.045], [24, 0.042, 0.045]],
+    0.175, 0.136, 0.12, -0.048);
+
+  // Môi biến dạng: lưu toạ độ gốc của hai nửa mõm để uốn theo hình miệng mỗi khung hình.
+  const lipMeshes = [
+    { mesh: upper, base: upperGeo.attributes.position.array.slice(), rimV: Math.cos(Math.PI * 0.56), isUpper: true },
+    { mesh: lower, base: lowerGeo.attributes.position.array.slice(), rimV: Math.cos(Math.PI * 0.44), isUpper: false },
+  ];
+  let lipKey = '';
+  function deformLips(m) {
+    const key = Object.values(m).map((v) => v.toFixed(3)).join(',');
+    if (key === lipKey) return;
+    lipKey = key;
+    for (const L of lipMeshes) {
+      const pos = L.mesh.geometry.attributes.position;
+      const arr = pos.array;
+      const b = L.base;
+      for (let i = 0; i < arr.length; i += 3) {
+        const x = b[i], y = b[i + 1], z = b[i + 2];
+        const u = x / MR, v = y / MR, w = z / MR;
+        // vùng ảnh hưởng: phía trước mõm, gần mép môi
+        const front = THREE.MathUtils.smoothstep(w, -0.15, 0.85);
+        const lip = Math.exp(-((v - L.rimV) ** 2) / 0.12);
+        const k = front * lip;
+        if (k < 1e-3) { arr[i] = x; arr[i + 1] = y; arr[i + 2] = z; continue; }
+        const corner = u * u;
+        const side = Math.sign(u);
+        let nx = x * (1 + (m.stretch * 0.24 - m.pucker * 0.15) * k);
+        let nz = z + MR * (m.pucker * 0.2 * (1 - corner) + m.lipPress * 0.04) * k;
+        let ny = y + MR * (m.smile + m.smileAsym * side) * 0.26 * corner * k;
+        if (L.isUpper) {
+          // nhếch môi trên (lộ răng); chu môi thì khép khoé lại thành lỗ tròn nhỏ
+          ny += MR * (m.upperRaise * 0.3 * (1 - 0.5 * corner) - m.lipPress * 0.04 - m.pucker * 0.1 * corner) * k;
+        } else {
+          ny += MR * (-m.lowerDrop * 0.5 * (1 - 0.5 * corner) + m.lipPress * 0.06 - m.lowerTuck * 0.2 + m.pucker * 0.12 * corner) * k;
+          nz -= MR * m.lowerTuck * 0.16 * k; // F/V: môi dưới hạ và lùi vào dưới răng trên
+        }
+        arr[i] = nx; arr[i + 1] = ny; arr[i + 2] = nz;
+      }
+      pos.needsUpdate = true;
+      L.mesh.geometry.computeVertexNormals();
+    }
+  }
 
   // Mắt
   const eyes = [];
@@ -283,13 +351,33 @@ export function createGiraffe() {
     neck.rotation.set(0.0 + (p.neckPitch || 0), p.neckYaw || 0, p.neckRoll || 0);
     head.rotation.set(p.headPitch || 0, p.headYaw || 0, p.headRoll || 0, 'YXZ');
 
-    // Miệng
-    const jawOpen = THREE.MathUtils.clamp(p.jaw || 0, 0, 1);
-    const wide = THREE.MathUtils.clamp(p.wide || 0, -1, 1);
+    // Miệng: hàm + môi biến dạng theo hình miệng (viseme)
+    const c01 = (v) => THREE.MathUtils.clamp(v || 0, 0, 1);
+    const jawOpen = c01(p.jaw);
+    const m = {
+      stretch: THREE.MathUtils.clamp(p.stretch || 0, -1, 1),
+      pucker: c01(p.pucker),
+      upperRaise: c01(p.upperRaise),
+      lowerDrop: c01(p.lowerDrop),
+      lowerTuck: c01(p.lowerTuck),
+      lipPress: c01(p.lipPress),
+      smile: THREE.MathUtils.clamp(p.smile || 0, -1, 1),
+      smileAsym: THREE.MathUtils.clamp(p.smileAsym || 0, -1, 1),
+    };
     jaw.rotation.x = jawOpen * 0.55;
-    const sx = 1 + wide * 0.1 + jawOpen * 0.04;
-    muzzle.scale.set(sx, 1 + jawOpen * 0.05, 1 - wide * 0.04);
-    tongue.position.z = 0.15 + jawOpen * 0.02;
+    jaw.position.z = -0.12 + jawOpen * 0.012; // hàm hơi đưa ra khi há to
+    deformLips(m);
+    // má/mõm co giãn nhẹ theo miệng (squash & stretch)
+    muzzle.scale.set(
+      1 + jawOpen * 0.04 + m.stretch * 0.05 - m.pucker * 0.06,
+      1 + jawOpen * 0.06 - m.lipPress * 0.03,
+      1 + m.pucker * 0.05 + m.lipPress * 0.02,
+    );
+    // nói lệch về một bên miệng
+    muzzle.position.x = (p.mouthShift || 0) * 0.025;
+    muzzle.rotation.y = (p.mouthShift || 0) * 0.08;
+    tongue.position.set(0, -0.05 + c01(p.tongueUp) * 0.035, 0.15 + jawOpen * 0.02);
+    tongue.rotation.x = -c01(p.tongueUp) * 0.35;
 
     // Mắt
     const blink = THREE.MathUtils.clamp(p.blink || 0, 0, 1);

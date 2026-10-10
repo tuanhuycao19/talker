@@ -247,6 +247,7 @@ function idlePose(t, dt) {
     breath: breath * 0.012,
     bodyY: breath * 0.008,
     headPitch: Math.sin(t * 0.7) * 0.03,
+    smile: 0.22 + Math.sin(t * 0.37) * 0.05, // nụ cười nhẹ khi nghỉ
     headRoll,
     neckRoll: headRoll * 0.15,
     earL: Math.sin(t * 0.9) * 0.05 + (idle.earSide < 0 ? flick : 0),
@@ -1254,8 +1255,12 @@ if (ui.subBtn) {
 
 // ======================= Vòng lặp hoạt ảnh =======================
 
+// Hình miệng lấy thẳng từ track khi phát (không cộng với chuyển động nghỉ)
+const MOUTH_KEYS = new Set(['jaw', 'stretch', 'pucker', 'upperRaise', 'lowerDrop', 'lowerTuck', 'lipPress', 'tongueUp']);
+
 const POSE_KEYS = [
-  'jaw', 'wide', 'headPitch', 'headYaw', 'headRoll', 'neckPitch', 'neckYaw', 'neckRoll',
+  ...MOUTH_KEYS, 'smile', 'smileAsym', 'mouthShift',
+  'headPitch', 'headYaw', 'headRoll', 'neckPitch', 'neckYaw', 'neckRoll',
   'earL', 'earR', 'eyeWide', 'blink', 'lookX', 'lookY', 'bodyY', 'squash', 'breath', 'tail', 'tailLift',
 ];
 
@@ -1295,6 +1300,7 @@ function frame() {
     pose.earL += w * (0.3 + l * 0.6);
     pose.earR += w * (0.3 + l * 0.6);
     pose.eyeWide += w * (0.25 + l * 0.5);
+    pose.smile += w * 0.15;
     pose.neckPitch += w * 0.04;
     pose.lookX = pose.lookX * (1 - w);
     pose.lookY = pose.lookY * (1 - w) + w * 0.1;
@@ -1308,7 +1314,7 @@ function frame() {
     for (const k of Object.keys(p)) {
       if (k === 'blink') pose.blink = Math.max(pose.blink * (1 - w), p.blink * w);
       else if (k === 'lookX' || k === 'lookY') pose[k] = pose[k] * (1 - w) + p[k] * w;
-      else if (k === 'jaw' || k === 'wide') pose[k] = state.mode === 'playing' ? p[k] : p[k] * w;
+      else if (MOUTH_KEYS.has(k)) pose[k] = state.mode === 'playing' ? p[k] : p[k] * w;
       else pose[k] += p[k] * w;
     }
     drawTimeline();
