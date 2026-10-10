@@ -244,6 +244,32 @@ export async function analyzeAudio(audioBuffer) {
   const loud = new Float32Array(n);
   for (let i = 0; i < n; i++) loud[i] = clamp((db[i] - gate) / range, 0, 1);
 
+  // Chuẩn hoá thêm theo từng vùng (±2.5 s), như bộ tự cân bằng âm lượng: đoạn mở đầu nhỏ / fade-in
+  // hoặc giọng chìm hơn phần sau vẫn mở miệng rõ. Vùng chỉ có nhiễu nền thì không được khuếch đại.
+  {
+    const win = Math.round(2.5 * FPS);
+    const step = 15; // tính 4 lần/giây rồi nội suy
+    const keys = [];
+    for (let c = 0; c < n + step; c += step) {
+      const i = Math.min(c, n - 1);
+      const seg = db.subarray(Math.max(0, i - win), Math.min(n, i + win + 1));
+      keys.push({ i, peak: percentile(seg, 95), floor: percentile(seg, 15) });
+      if (i === n - 1) break;
+    }
+    let k = 0;
+    for (let i = 0; i < n; i++) {
+      while (k < keys.length - 2 && keys[k + 1].i <= i) k++;
+      const a = keys[k], b = keys[Math.min(k + 1, keys.length - 1)];
+      const u = b.i > a.i ? (i - a.i) / (b.i - a.i) : 0;
+      const pL = a.peak + (b.peak - a.peak) * u;
+      const fL = a.floor + (b.floor - a.floor) * u;
+      const gateL = fL + Math.max(3, (pL - fL) * 0.2);
+      const local = clamp((db[i] - gateL) / Math.max(9, pL - gateL), 0, 1);
+      const trust = clamp((pL - floor - 8) / 8, 0, 1); // vùng có tín hiệu thật (không chỉ nhiễu)
+      loud[i] = Math.max(loud[i], local * trust);
+    }
+  }
+
   // Hữu thanh (có cao độ) và độ "xì" (âm s, x, ch...).
   const voiced = new Uint8Array(n);
   const fric = new Float32Array(n);
