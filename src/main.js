@@ -794,3 +794,25 @@ requestAnimationFrame(frame);
 
 // Bật sẵn AudioContext ở lần chạm đầu tiên (yêu cầu của iOS/Safari).
 window.addEventListener('pointerdown', () => getAudioCtx(), { once: true });
+
+// GitHub Pages cho trình duyệt giữ index.html cũ tới ~10 phút. Khi mở trang, kiểm tra bản mới nhất
+// trên server; nếu file JS đã đổi thì tải lại bằng URL mới (bỏ qua bộ nhớ đệm).
+async function checkForUpdate() {
+  if (!import.meta.env.PROD) return;
+  try {
+    const current = document.querySelector('script[type="module"][src]')?.getAttribute('src') || '';
+    const url = new URL(location.href);
+    url.searchParams.set('_', Date.now().toString(36));
+    const html = await (await fetch(url, { cache: 'no-store' })).text();
+    const latest = html.match(/<script[^>]+type="module"[^>]+src="([^"]+)"/)?.[1];
+    if (!latest || !current || latest === current) return;
+    const build = latest.replace(/^.*index-|\.js$/g, '');
+    if (new URLSearchParams(location.search).get('v') === build) return; // tránh lặp tải lại
+    url.searchParams.delete('_');
+    url.searchParams.set('v', build);
+    location.replace(url);
+  } catch {
+    /* mất mạng – dùng bản hiện có */
+  }
+}
+checkForUpdate();
