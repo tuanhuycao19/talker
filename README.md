@@ -44,3 +44,9 @@ Micro chỉ hoạt động trên `localhost` hoặc HTTPS. Thư mục `dist/` c�
 | `src/analysis.js` | Phân tích giọng nói và sinh các track chuyển động, `samplePose` để lấy pose theo thời gian |
 | `src/backgrounds.js` | Ảnh nền dựng sẵn (SVG), tải ảnh, lưu lựa chọn |
 | `src/main.js` | Cảnh 3D, ghi âm, phát lại, dòng thời gian, giao diện |
+
+## Deploy lên GitHub Pages
+
+Workflow `.github/workflows/deploy.yml` tự build và deploy mỗi khi push lên nhánh chính.
+Lần đầu cần bật Pages: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+Trang sẽ có địa chỉ `https://<user>.github.io/talker/`.
