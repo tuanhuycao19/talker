@@ -1265,7 +1265,8 @@ const POSE_KEYS = [
   'earL', 'earR', 'eyeWide', 'blink', 'lookX', 'lookY', 'bodyY', 'squash', 'breath', 'tail', 'tailLift',
 ];
 
-const weights = { listen: 0, play: 0 };
+// stand: 0 = ngồi nghỉ, 1 = đứng biểu diễn (đứng dậy khi phát, ngồi lại khi xong)
+const weights = { listen: 0, play: 0, stand: 0 };
 const listenSmooth = { level: 0 };
 const clock = new THREE.Clock();
 
@@ -1277,6 +1278,7 @@ function frame() {
   const approach = (cur, target, speed) => cur + (target - cur) * (1 - Math.exp(-dt * speed));
   weights.listen = approach(weights.listen, state.mode === 'recording' ? 1 : 0, 6);
   weights.play = approach(weights.play, state.mode === 'playing' ? 1 : 0, 14);
+  weights.stand = approach(weights.stand, state.mode === 'playing' ? 1 : 0, state.mode === 'playing' ? 4 : 2.5);
 
   const pose = idlePose(t, dt);
   for (const k of POSE_KEYS) pose[k] ??= 0;
@@ -1316,10 +1318,15 @@ function frame() {
       if (k === 'blink') pose.blink = Math.max(pose.blink * (1 - w), p.blink * w);
       else if (k === 'lookX' || k === 'lookY') pose[k] = pose[k] * (1 - w) + p[k] * w;
       else if (MOUTH_KEYS.has(k)) pose[k] = state.mode === 'playing' ? p[k] : p[k] * w;
+      else if (k === 'sit') continue; // xử lý riêng bên dưới
       else pose[k] += p[k] * w;
     }
     drawTimeline();
   }
+
+  // Ngồi khi nghỉ; khi phát thì đứng dậy và làm theo track (trong bài có thể ngồi xuống lúc hát)
+  const trackSit = state.anim && state.mode === 'playing' ? samplePose(state.anim, state.playhead).sit || 0 : 0;
+  pose.sit = 1 - weights.stand * (1 - trackSit);
 
   // Giữ video nền khớp với âm thanh khi phát (sửa lệch > 0.15s).
   const v = ui.bgVideo;
