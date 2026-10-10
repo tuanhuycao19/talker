@@ -298,7 +298,8 @@ export function createGiraffe() {
     const closed = 1.62;
     for (const e of eyes) {
       e.lidPivot.rotation.x = THREE.MathUtils.lerp(open, closed, blink);
-      e.look.rotation.set(-(p.lookY || 0) * 0.35, (p.lookX || 0) * 0.45, 0);
+      // bù góc xoay ra ngoài của nhãn cầu để con ngươi nhìn thẳng về phía trước
+      e.look.rotation.set(-(p.lookY || 0) * 0.35, (p.lookX || 0) * 0.45 - e.side * 0.22, 0);
       const s = 1 + eyeWide * 0.06;
       e.eye.scale.set(s, s, s);
     }

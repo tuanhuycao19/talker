@@ -47,7 +47,7 @@ scene.environmentIntensity = 0.55;
 
 const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
 const TARGET = new THREE.Vector3(0, 2.05, 0);
-camera.position.set(0.6, 2.6, 10);
+camera.position.set(0, 2.6, 10);
 
 const controls = new OrbitControls(camera, ui.canvas);
 controls.target.copy(TARGET);
@@ -150,7 +150,7 @@ function idlePose(t, dt) {
   const blink = bt < 0.08 ? bt / 0.08 : bt < 0.2 ? 1 - (bt - 0.08) / 0.12 : 0;
 
   if (t > idle.nextGlance) {
-    idle.lookTarget = { x: (Math.random() - 0.5) * 0.8, y: (Math.random() - 0.5) * 0.4 };
+    idle.lookTarget = { x: (Math.random() - 0.5) * 0.25, y: (Math.random() - 0.5) * 0.15 };
     idle.nextGlance = t + 1 + Math.random() * 2.5;
   }
   const k = 1 - Math.exp(-dt * 18);
@@ -170,9 +170,9 @@ function idlePose(t, dt) {
     breath: breath * 0.012,
     bodyY: breath * 0.008,
     headPitch: Math.sin(t * 0.7) * 0.03,
-    headYaw: Math.sin(t * 0.43) * 0.06 + Math.sin(t * 0.17) * 0.05,
-    headRoll: Math.sin(t * 0.31) * 0.03,
-    neckYaw: Math.sin(t * 0.23) * 0.03,
+    headYaw: Math.sin(t * 0.43) * 0.015 + Math.sin(t * 0.17) * 0.01,
+    headRoll: Math.sin(t * 0.31) * 0.012,
+    neckYaw: Math.sin(t * 0.23) * 0.008,
     neckRoll: Math.sin(t * 0.29) * 0.015,
     earL: Math.sin(t * 0.9) * 0.05 + (idle.earSide < 0 ? flick : 0),
     earR: Math.sin(t * 0.9 + 1) * 0.05 + (idle.earSide > 0 ? flick : 0),
@@ -585,7 +585,7 @@ function frame() {
   listenSmooth.level = approach(listenSmooth.level, state.mode === 'recording' ? state.micLevel : 0, 10);
   if (weights.listen > 0.001) {
     const w = weights.listen, l = listenSmooth.level;
-    pose.headRoll += w * (0.16 + Math.sin(t * 1.3) * 0.03);
+    pose.headRoll += w * (0.05 + Math.sin(t * 1.3) * 0.01);
     pose.headPitch += w * -0.05;
     pose.earL += w * (0.3 + l * 0.6);
     pose.earR += w * (0.3 + l * 0.6);

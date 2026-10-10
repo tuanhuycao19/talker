@@ -363,22 +363,22 @@ export async function analyzeAudio(audioBuffer) {
       const ph = realPhrases[pi];
       if (ph && i === ph.start) {
         side = -side;
-        yaw = side * (0.08 + rand() * 0.22);
-        roll = -side * (0.04 + rand() * 0.1);
+        yaw = side * (0.015 + rand() * 0.03);
+        roll = -side * (0.015 + rand() * 0.03);
       }
       const inPhrase = ph && i >= ph.start && i < ph.end;
       yawTarget[i] = inPhrase ? yaw : yaw * 0.3;
       // cao độ lên cuối câu (câu hỏi) -> nghiêng đầu nhiều hơn
-      rollTarget[i] = inPhrase ? roll + pitchRel[i] * 0.08 * Math.sign(roll || 1) : 0;
+      rollTarget[i] = inPhrase ? roll + pitchRel[i] * 0.025 * Math.sign(roll || 1) : 0;
     }
     // ánh mắt: liếc nhẹ theo hướng xoay đầu + vài cú liếc ngẫu nhiên
     let lx = 0, ly = 0;
     for (let i = 0; i < n; i++) {
       if (i % Math.round(FPS * (0.9 + rand() * 1.5)) === 0) {
-        lx = (rand() - 0.5) * 0.6;
-        ly = (rand() - 0.5) * 0.4;
+        lx = (rand() - 0.5) * 0.15;
+        ly = (rand() - 0.5) * 0.1;
       }
-      lookXT[i] = lx - yawTarget[i] * 0.8;
+      lookXT[i] = lx;
       lookYT[i] = ly + pitchRel[i] * 0.25;
     }
   }
