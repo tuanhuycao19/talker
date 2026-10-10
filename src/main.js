@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { createGiraffe } from './giraffe.js';
 import { analyzeAudio, samplePose } from './analysis.js';
-import { PRESETS, loadBackground, saveBackground, backgroundCss, readImageFile } from './backgrounds.js';
+import { PRESETS, loadBackground, saveBackground, backgroundCss, backgroundImageUrl, readImageFile } from './backgrounds.js';
 import { isTikTokUrl, resolveTikTok, fetchTikTokVideo } from './tiktok.js';
 
 const $ = (id) => document.getElementById(id);
@@ -22,6 +22,15 @@ const ui = {
   ttForm: $('ttForm'),
   ttUrl: $('ttUrl'),
   ttBtn: $('ttBtn'),
+  exportBtn: $('exportBtn'),
+  exportDlg: $('exportDlg'),
+  exportClose: $('exportClose'),
+  exportCanvas: $('exportCanvas'),
+  exportBar: $('exportBar'),
+  exportMsg: $('exportMsg'),
+  exportStart: $('exportStart'),
+  exportSave: $('exportSave'),
+  exportShare: $('exportShare'),
   download: $('download'),
   timeline: $('timeline'),
   timelineEmpty: $('timelineEmpty'),
@@ -32,6 +41,9 @@ const ui = {
   bgFile: $('bgFile'),
   bgColor: $('bgColor'),
 };
+
+// Trạng thái xuất video (khai báo sớm vì fitCamera dùng tới).
+const exportState = { active: false, recorder: null, chunks: [], ctx2d: null, bgImage: null, W: 0, H: 0, blob: null, cancelled: false };
 
 const setStatus = (html) => { ui.status.innerHTML = html; };
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -114,6 +126,7 @@ const giraffe = createGiraffe();
 scene.add(giraffe.root);
 
 function fitCamera() {
+  if (exportState.active) return; // đang xuất video: giữ kích thước khung xuất
   const w = window.innerWidth;
   const h = window.innerHeight;
   renderer.setSize(w, h, false);
@@ -292,6 +305,7 @@ async function startRecording() {
   ui.recBtn.classList.add('recording');
   ui.recBtn.querySelector('.label').textContent = 'Dừng';
   ui.playBtn.disabled = true;
+  ui.exportBtn.disabled = true;
   setStatus('Đang ghi âm… hươu đang lắng nghe bạn 👂');
 }
 
@@ -321,6 +335,7 @@ async function loadAudio(blob, { fromVideo = false, label = '' } = {}) {
   state.mode = 'analyzing';
   ui.recBtn.classList.add('busy');
   ui.playBtn.disabled = true;
+  ui.exportBtn.disabled = true;
   setStatus('Đang phân tích giọng nói và tạo chuyển động…');
   try {
     stopPlayback();
@@ -342,6 +357,7 @@ async function loadAudio(blob, { fromVideo = false, label = '' } = {}) {
     ui.download.hidden = false;
     ui.timelineEmpty.hidden = true;
     ui.playBtn.disabled = false;
+    ui.exportBtn.disabled = false;
     state.playhead = 0;
     const s = anim.stats;
     setStatus(`${label ? `${escapeHtml(label)} · ` : ''}Đã tạo chuyển động: ${fmtTime(anim.duration)} · ${s.syllables} nhấn âm · ${anim.phrases.length} câu`
@@ -375,7 +391,7 @@ function computeWaveform(buffer, buckets) {
   return out;
 }
 
-function startPlayback(offset = 0) {
+function startPlayback(offset = 0, { extraDest = null, onEnd = null } = {}) {
   if (!state.buffer) return;
   stopPlayback();
   const ctx = getAudioCtx();
@@ -384,6 +400,7 @@ function startPlayback(offset = 0) {
   state.rate = parseFloat(ui.voice.value) || 1;
   src.playbackRate.value = state.rate;
   src.connect(ctx.destination);
+  if (extraDest) src.connect(extraDest);
   src.onended = () => {
     if (state.source === src) {
       state.source = null;
@@ -393,6 +410,7 @@ function startPlayback(offset = 0) {
       ui.playBtn.classList.remove('playing');
       ui.playBtn.querySelector('.label').textContent = 'Phát lại';
       setStatus('Xong! Nhấn <b>Phát lại</b> để xem lại hoặc <b>Ghi âm</b> câu mới.');
+      onEnd?.();
     }
   };
   state.playOffset = Math.max(0, Math.min(offset, state.buffer.duration - 0.05));
@@ -709,11 +727,247 @@ uiToggle.addEventListener('click', () => setUiHidden(!document.body.classList.co
 
 // Phím tắt: R ghi/dừng, Space phát/dừng, H ẩn/hiện nút.
 document.addEventListener('keydown', (e) => {
-  if (e.target.closest('input, select, textarea')) return;
+  if (e.target.closest('input, select, textarea') || !ui.exportDlg.hidden) return;
   if (e.code === 'KeyR') { e.preventDefault(); ui.recBtn.click(); }
   if (e.code === 'Space' && !ui.playBtn.disabled) { e.preventDefault(); ui.playBtn.click(); }
   if (e.code === 'KeyH') { e.preventDefault(); uiToggle.click(); }
 });
+
+
+// ======================= Xuất video =======================
+// Phát lại từ đầu; mỗi khung hình ghép nền + hình 3D lên một canvas, ghi canvas + âm thanh
+// bằng MediaRecorder (thời gian thực).
+
+function pickVideoMime() {
+  const types = [
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=avc1,mp4a',
+    'video/mp4;codecs=avc1.42E01E,opus',
+    'video/mp4;codecs=avc1,opus',
+    'video/mp4',
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+  ];
+  return types.find((t) => MediaRecorder.isTypeSupported?.(t)) || '';
+}
+
+function drawCover(g, src, sw, sh, W, H, scale = 1) {
+  if (!sw || !sh) return;
+  const k = Math.max(W / sw, H / sh) * scale;
+  g.drawImage(src, (W - sw * k) / 2, (H - sh * k) / 2, sw * k, sh * k);
+}
+
+function drawContain(g, src, sw, sh, W, H) {
+  if (!sw || !sh) return;
+  const k = Math.min(W / sw, H / sh);
+  g.drawImage(src, (W - sw * k) / 2, (H - sh * k) / 2, sw * k, sh * k);
+}
+
+function drawExportBackground(g, W, H) {
+  const v = ui.bgVideo;
+  if (!ui.bgVideoWrap.hidden) {
+    g.fillStyle = '#111';
+    g.fillRect(0, 0, W, H);
+    if (v.readyState >= 2) {
+      // nền mờ hai bên giống trên màn hình, rồi video đặt giữa
+      if ('filter' in g) g.filter = 'blur(28px) brightness(0.75) saturate(1.2)';
+      drawCover(g, v, v.videoWidth, v.videoHeight, W, H, 1.15);
+      g.filter = 'none';
+      drawContain(g, v, v.videoWidth, v.videoHeight, W, H);
+    }
+    return;
+  }
+  g.fillStyle = currentBg.type === 'color' ? currentBg.value : backgroundCss(currentBg).color;
+  g.fillRect(0, 0, W, H);
+  const img = exportState.bgImage;
+  if (img) drawCover(g, img, img.naturalWidth, img.naturalHeight, W, H);
+}
+
+function drawExportFrame() {
+  const { ctx2d: g, W, H } = exportState;
+  drawExportBackground(g, W, H);
+  g.drawImage(renderer.domElement, 0, 0, W, H);
+  if (state.anim) {
+    const p = Math.min(1, state.playhead / state.anim.duration);
+    ui.exportBar.style.width = `${(p * 100).toFixed(1)}%`;
+  }
+}
+
+function setExportSize(W, H) {
+  renderer.setPixelRatio(1);
+  renderer.setSize(W, H, false);
+  camera.aspect = W / H;
+  const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const dist = Math.max(5.2 / 2 / tanHalf, 2.8 / 2 / (tanHalf * camera.aspect)) * 1.05;
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  camera.position.copy(controls.target).addScaledVector(dir, dist);
+  camera.clearViewOffset();
+  camera.updateProjectionMatrix();
+}
+
+function selectedFormat() {
+  const v = ui.exportDlg.querySelector('input[name="fmt"]:checked').value;
+  const [W, H] = v.split('x').map(Number);
+  return { W, H };
+}
+
+function resetExportDialog() {
+  ui.exportBar.style.width = '0%';
+  ui.exportStart.hidden = false;
+  ui.exportStart.disabled = false;
+  ui.exportStart.textContent = 'Bắt đầu xuất';
+  ui.exportSave.hidden = true;
+  ui.exportShare.hidden = true;
+  for (const r of ui.exportDlg.querySelectorAll('input[name="fmt"]')) r.disabled = false;
+  ui.exportMsg.textContent = 'Video gồm ảnh nền, chú hươu 3D và âm thanh. Quá trình xuất chạy theo thời gian thực – hãy giữ màn hình sáng.';
+  drawExportPreview();
+}
+
+// Ảnh xem trước tĩnh khi chưa xuất.
+async function drawExportPreview() {
+  const { W, H } = selectedFormat();
+  const c = ui.exportCanvas;
+  c.width = W;
+  c.height = H;
+  exportState.ctx2d = c.getContext('2d');
+  exportState.W = W;
+  exportState.H = H;
+  await loadExportBackground();
+  const prevPR = renderer.getPixelRatio();
+  setExportSize(W, H);
+  renderer.render(scene, camera);
+  drawExportFrame();
+  renderer.setPixelRatio(prevPR);
+  fitCamera();
+}
+
+async function loadExportBackground() {
+  exportState.bgImage = null;
+  const url = ui.bgVideoWrap.hidden ? backgroundImageUrl(currentBg) : null;
+  if (!url) return;
+  const img = new Image();
+  img.src = url;
+  try {
+    await img.decode();
+    exportState.bgImage = img;
+  } catch {
+    /* không vẽ được ảnh nền – dùng màu */
+  }
+}
+
+function openExportDialog() {
+  if (!state.anim) return;
+  togglePanel(false);
+  stopPlayback();
+  ui.exportDlg.hidden = false;
+  resetExportDialog();
+}
+
+function closeExportDialog() {
+  if (exportState.active) cancelExport();
+  ui.exportDlg.hidden = true;
+}
+
+async function startExport() {
+  if (!state.anim || exportState.active) return;
+  if (!window.MediaRecorder || !ui.exportCanvas.captureStream) {
+    ui.exportMsg.textContent = 'Trình duyệt này không hỗ trợ xuất video. Hãy thử Chrome, Edge hoặc Safari mới.';
+    return;
+  }
+  if (!ui.bgVideoWrap.hidden && !ui.bgVideo.currentSrc.startsWith('blob:')) {
+    ui.exportMsg.textContent = 'Video nền này bị TikTok chặn nên không ghép vào video được. Hãy tải video về rồi dùng Mở file, hoặc cấu hình proxy.';
+    return;
+  }
+  const { W, H } = selectedFormat();
+  const c = ui.exportCanvas;
+  c.width = W;
+  c.height = H;
+  exportState.ctx2d = c.getContext('2d');
+  exportState.W = W;
+  exportState.H = H;
+  await loadExportBackground();
+
+  const ctx = getAudioCtx();
+  const audioDest = ctx.createMediaStreamDestination();
+  const stream = new MediaStream([
+    ...c.captureStream(30).getVideoTracks(),
+    ...audioDest.stream.getAudioTracks(),
+  ]);
+  const mimeType = pickVideoMime();
+  let recorder;
+  try {
+    recorder = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), videoBitsPerSecond: 5_000_000 });
+  } catch (err) {
+    ui.exportMsg.textContent = `Không khởi tạo được bộ ghi video: ${err.message}`;
+    return;
+  }
+  exportState.recorder = recorder;
+  exportState.chunks = [];
+  exportState.cancelled = false;
+  exportState.prevPixelRatio = renderer.getPixelRatio();
+  recorder.ondataavailable = (e) => e.data.size && exportState.chunks.push(e.data);
+  recorder.onstop = () => finishExport(recorder.mimeType || mimeType || 'video/webm');
+
+  exportState.active = true;
+  setExportSize(W, H);
+  ui.exportStart.disabled = true;
+  ui.exportStart.textContent = 'Đang xuất…';
+  for (const r of ui.exportDlg.querySelectorAll('input[name="fmt"]')) r.disabled = true;
+  ui.exportMsg.textContent = `Đang xuất video (${fmtTime(state.anim.duration / (parseFloat(ui.voice.value) || 1))})… giữ màn hình sáng và không chuyển ứng dụng.`;
+
+  // Vẽ sẵn khung đầu rồi mới bắt đầu ghi, để video không bị khung trống.
+  renderer.render(scene, camera);
+  drawExportFrame();
+  recorder.start(250);
+  startPlayback(0, {
+    extraDest: audioDest,
+    // ghi thêm 0.4s cho miệng khép lại rồi dừng
+    onEnd: () => setTimeout(() => recorder.state !== 'inactive' && recorder.stop(), 400),
+  });
+}
+
+function cancelExport() {
+  exportState.cancelled = true;
+  stopPlayback();
+  setStatus('Đã huỷ xuất video.');
+  if (exportState.recorder?.state !== 'inactive') exportState.recorder?.stop();
+}
+
+function endExportRendering() {
+  exportState.active = false;
+  renderer.setPixelRatio(exportState.prevPixelRatio || Math.min(window.devicePixelRatio, 2));
+  fitCamera();
+}
+
+function finishExport(type) {
+  endExportRendering();
+  if (exportState.cancelled) {
+    resetExportDialog();
+    return;
+  }
+  const blob = new Blob(exportState.chunks, { type: type.split(';')[0] });
+  exportState.blob = blob;
+  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+  const name = `talker-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${ext}`;
+  if (ui.exportSave.href) URL.revokeObjectURL(ui.exportSave.href);
+  ui.exportSave.href = URL.createObjectURL(blob);
+  ui.exportSave.download = name;
+  ui.exportSave.hidden = false;
+  ui.exportStart.hidden = true;
+  ui.exportBar.style.width = '100%';
+  const file = new File([blob], name, { type: blob.type });
+  ui.exportShare.hidden = !(navigator.canShare && navigator.canShare({ files: [file] }));
+  ui.exportShare.onclick = () => navigator.share({ files: [file], title: 'Talker' }).catch(() => {});
+  ui.exportMsg.textContent = `Xong! Video ${ext.toUpperCase()} ${(blob.size / 1e6).toFixed(1)} MB. Bấm Tải về để lưu.`;
+  window.__exported = { size: blob.size, type: blob.type }; // hỗ trợ kiểm thử
+}
+
+ui.exportBtn.addEventListener('click', openExportDialog);
+ui.exportClose.addEventListener('click', closeExportDialog);
+ui.exportStart.addEventListener('click', startExport);
+for (const r of ui.exportDlg.querySelectorAll('input[name="fmt"]')) r.addEventListener('change', drawExportPreview);
+document.addEventListener('keydown', (e) => e.key === 'Escape' && !ui.exportDlg.hidden && closeExportDialog());
 
 // ======================= Vòng lặp hoạt ảnh =======================
 
@@ -787,6 +1041,7 @@ function frame() {
   giraffe.setPose(pose);
   controls.update();
   renderer.render(scene, camera);
+  if (exportState.active) drawExportFrame();
   requestAnimationFrame(frame);
 }
 

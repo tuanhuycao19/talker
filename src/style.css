@@ -327,10 +327,64 @@ select {
 .file-btn { position: relative; overflow: hidden; }
 .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 
+/* ---------- Hộp thoại xuất video ---------- */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(15, 20, 30, 0.72);
+  backdrop-filter: blur(6px);
+}
+.modal[hidden] { display: none; }
+.modal-card {
+  width: min(460px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+.modal-card h2 { font-size: 17px; margin: 0; }
+.fmt-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.fmt-row label { flex: 1; }
+.fmt-row input { position: absolute; opacity: 0; pointer-events: none; }
+.fmt-row span {
+  display: block;
+  text-align: center;
+  padding: 8px 6px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fmt-row input:checked + span { border-color: var(--accent-strong); background: #fff4e3; }
+.fmt-row input:focus-visible + span { outline: 3px solid rgba(242, 162, 58, 0.6); }
+.fmt-row input:disabled + span { opacity: 0.5; cursor: not-allowed; }
+.export-preview {
+  --ph: min(46vh, 420px);
+  display: grid;
+  place-items: center;
+  height: var(--ph);
+  border-radius: 12px;
+  background: #eef0f3;
+  overflow: hidden;
+}
+.export-preview canvas { max-width: 100%; max-height: var(--ph); width: auto; height: auto; display: block; }
+.progress { height: 6px; border-radius: 3px; background: #eef0f3; margin: 12px 0 8px; overflow: hidden; }
+.progress .bar { height: 100%; width: 0; background: var(--accent); transition: width 0.2s linear; }
+.export-msg { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+
 @media (max-width: 560px) {
   .brand { font-size: 17px; padding: 7px 12px; }
   .btn { padding: 10px 13px; font-size: 14px; }
-  .controls .rec, .controls #playBtn { flex: 1; justify-content: center; }
+  .controls .rec, .controls #playBtn, .controls #exportBtn { flex: 1; justify-content: center; padding-left: 8px; padding-right: 8px; }
+  .controls { gap: 8px; }
   .more { margin-left: 0; width: 100%; flex-wrap: nowrap; }
   .more select { flex: 1; min-width: 0; }
   .status { font-size: 13px; }

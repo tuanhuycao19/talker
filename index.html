@@ -73,6 +73,10 @@
           <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
           <span class="label">Phát lại</span>
         </button>
+        <button id="exportBtn" class="btn secondary" type="button" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16 10 5-3v10l-5-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          <span class="label">Xuất video</span>
+        </button>
         <div class="more">
           <select id="voice" aria-label="Giọng phát lại">
             <option value="1">Giọng gốc</option>
@@ -92,6 +96,30 @@
         </div>
       </div>
     </footer>
+
+    <div id="exportDlg" class="modal" role="dialog" aria-modal="true" aria-labelledby="exportTitle" hidden>
+      <div class="modal-card">
+        <div class="panel-head">
+          <h2 id="exportTitle">Xuất video</h2>
+          <button id="exportClose" class="icon-btn" type="button" aria-label="Đóng">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="fmt-row" role="radiogroup" aria-label="Khung hình">
+          <label><input type="radio" name="fmt" value="720x1280" checked /><span>Dọc 9:16</span></label>
+          <label><input type="radio" name="fmt" value="1280x720" /><span>Ngang 16:9</span></label>
+          <label><input type="radio" name="fmt" value="1080x1080" /><span>Vuông 1:1</span></label>
+        </div>
+        <div class="export-preview"><canvas id="exportCanvas"></canvas></div>
+        <div class="progress" aria-hidden="true"><div id="exportBar" class="bar"></div></div>
+        <p id="exportMsg" class="export-msg">Video gồm ảnh nền, chú hươu 3D và âm thanh. Quá trình xuất chạy theo thời gian thực – hãy giữ màn hình sáng.</p>
+        <div class="modal-actions">
+          <button id="exportStart" class="btn primary" type="button">Bắt đầu xuất</button>
+          <a id="exportSave" class="btn primary" hidden>Tải về</a>
+          <button id="exportShare" class="btn secondary" type="button" hidden>Chia sẻ</button>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="/src/main.js"></script>
   </body>

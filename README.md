@@ -25,6 +25,9 @@ ghi âm giọng nói của bạn rồi "nói lại" với chuyển động miệ
 - **Video TikTok**: dán link (vd. `https://vt.tiktok.com/ZSbnqN2Gm/`) rồi bấm *Lấy video*. Video được dùng làm
   nền, âm thanh của video được phân tích để hươu "nói" theo; khi *Phát lại*, video nền chạy đồng bộ với tiếng.
   Nếu sau đó bạn ghi âm giọng mới, video vẫn làm nền (chạy lặp, tắt tiếng).
+- **Xuất video**: ghép ảnh nền (hoặc video nền), chú hươu 3D và âm thanh thành một file video để tải về hoặc chia sẻ.
+  Chọn khung dọc 9:16 (720×1280), ngang 16:9 (1280×720) hoặc vuông (1080×1080). Video được ghi theo thời gian
+  thực trong lúc hươu phát lại, nên cần giữ màn hình sáng. Định dạng tuỳ trình duyệt: MP4 (Safari, Chrome mới) hoặc WebM.
 - Mở file âm thanh **hoặc video** có sẵn (video sẽ làm nền + nguồn âm thanh); lưu bản ghi về máy.
 - Nút con mắt (góc trên bên trái) ẩn toàn bộ nút điều khiển để xem trọn video/ảnh nền; bấm lần nữa để hiện lại.
 - Thỉnh thoảng hươu nghiêng đầu sang một bên rồi trở lại tư thế thẳng.

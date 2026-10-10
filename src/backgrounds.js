@@ -1,7 +1,7 @@
 // Ảnh nền dựng sẵn (SVG nội tuyến) + ảnh người dùng tải lên + màu trơn.
 
 const svg = (body, defs = '') =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice"><defs>${defs}</defs>${body}</svg>`;
+  `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice"><defs>${defs}</defs>${body}</svg>`;
 
 const toUrl = (s) => `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(s)}")`;
 
@@ -146,4 +146,12 @@ export function readImageFile(file, maxSize = 1920) {
     };
     img.src = url;
   });
+}
+
+// URL ảnh thô của nền (để vẽ lên canvas khi xuất video); null nếu là màu trơn.
+export function backgroundImageUrl(bg) {
+  if (bg.type === 'color') return null;
+  if (bg.type === 'image') return bg.dataUrl;
+  const preset = PRESETS.find((p) => p.id === bg.id) || PRESETS[0];
+  return preset.css.replace(/^url\("/, '').replace(/"\)$/, '');
 }
