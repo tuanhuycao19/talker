@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { createGiraffe } from './giraffe.js';
-import { analyzeAudio, samplePose } from './analysis.js';
+import { analyzeAudio, samplePose, toMono16k } from './analysis.js';
+import { transcribe, chunksToCues, cueAt, toSrt, fmtCueTime, drawCaption, MODELS } from './subtitles.js';
 import { PRESETS, loadBackground, saveBackground, backgroundCss, backgroundImageUrl, readImageFile } from './backgrounds.js';
 import { isTikTokUrl, resolveTikTok, fetchTikTokVideo } from './tiktok.js';
 import { createSpectrum } from './spectrum.js';
@@ -29,6 +30,18 @@ const ui = {
   exportBtn: $('exportBtn'),
   spectrum: $('spectrum'),
   specStyle: $('specStyle'),
+  subBtn: $('subBtn'),
+  caption: $('caption'),
+  subDlg: $('subDlg'),
+  subClose: $('subClose'),
+  subLang: $('subLang'),
+  subModel: $('subModel'),
+  subBar: $('subBar'),
+  subMsg: $('subMsg'),
+  subList: $('subList'),
+  subShow: $('subShow'),
+  subSrt: $('subSrt'),
+  subRun: $('subRun'),
   exportDlg: $('exportDlg'),
   exportClose: $('exportClose'),
   exportCanvas: $('exportCanvas'),
@@ -277,6 +290,7 @@ const state = {
   videoLinked: false,
   // V3: analyser cho sóng nhạc
   specAnalyser: null,
+  subs: null, // phụ đề [{start, end, text}] theo thời gian bản ghi
 };
 
 const MAX_REC_SECONDS = 60;
@@ -323,6 +337,7 @@ async function startRecording() {
   ui.recBtn.querySelector('.label').textContent = 'Dừng';
   ui.playBtn.disabled = true;
   ui.exportBtn.disabled = true;
+  if (ui.subBtn) ui.subBtn.disabled = true;
   setStatus('Đang ghi âm… hươu đang lắng nghe bạn 👂');
 }
 
@@ -353,6 +368,7 @@ async function loadAudio(blob, { fromVideo = false, label = '' } = {}) {
   ui.recBtn.classList.add('busy');
   ui.playBtn.disabled = true;
   ui.exportBtn.disabled = true;
+  if (ui.subBtn) ui.subBtn.disabled = true;
   setStatus('Đang phân tích giọng nói và tạo chuyển động…');
   try {
     stopPlayback();
@@ -375,6 +391,9 @@ async function loadAudio(blob, { fromVideo = false, label = '' } = {}) {
     ui.timelineEmpty.hidden = true;
     ui.playBtn.disabled = false;
     ui.exportBtn.disabled = false;
+    if (ui.subBtn) ui.subBtn.disabled = false;
+    state.subs = null; // phụ đề thuộc về bản ghi cũ
+    if (ui.subList) renderSubList();
     state.playhead = 0;
     const s = anim.stats;
     setStatus(`${label ? `${escapeHtml(label)} · ` : ''}Đã tạo chuyển động: ${fmtTime(anim.duration)} · ${s.syllables} nhấn âm · ${anim.phrases.length} câu`
@@ -746,7 +765,7 @@ uiToggle.addEventListener('click', () => setUiHidden(!document.body.classList.co
 
 // Phím tắt: R ghi/dừng, Space phát/dừng, H ẩn/hiện nút.
 document.addEventListener('keydown', (e) => {
-  if (e.target.closest('input, select, textarea') || !ui.exportDlg.hidden) return;
+  if (e.target.closest('input, select, textarea') || !ui.exportDlg.hidden || (ui.subDlg && !ui.subDlg.hidden)) return;
   if (e.code === 'KeyR') { e.preventDefault(); ui.recBtn.click(); }
   if (e.code === 'Space' && !ui.playBtn.disabled) { e.preventDefault(); ui.playBtn.click(); }
   if (e.code === 'KeyH') { e.preventDefault(); uiToggle.click(); }
@@ -816,6 +835,7 @@ function drawExportFrame() {
     g.drawImage(layer, 0, 0);
   }
   g.drawImage(renderer.domElement, 0, 0, W, H);
+  if (state.subs && subShow) drawCaption(g, W, H, cueAt(state.subs, state.playhead)?.text);
   if (state.anim) {
     const p = Math.min(1, state.playhead / state.anim.duration);
     ui.exportBar.style.width = `${(p * 100).toFixed(1)}%`;
@@ -1038,6 +1058,123 @@ function drawSpectrum(dt) {
   spectrum.draw(g, w, h, performance.now() / 1000, { y: 0.6 - (dock / window.innerHeight) * 0.45, amp: SPEC_POS.amp, style: specStyle });
 }
 
+
+// ======================= Phụ đề tự động (V3) =======================
+
+let subShow = true;
+let subBusy = false;
+let shownCue = null;
+
+function updateCaption() {
+  const cue = state.mode === 'playing' && subShow ? cueAt(state.subs, state.playhead) : null;
+  if (cue === shownCue) return;
+  shownCue = cue;
+  ui.caption.textContent = cue ? cue.text : '';
+  ui.caption.hidden = !cue;
+  if (!ui.subDlg.hidden) {
+    for (const li of ui.subList.children) li.classList.toggle('active', li._cue === cue);
+  }
+}
+
+function renderSubList() {
+  ui.subList.textContent = '';
+  ui.subSrt.hidden = !state.subs?.length;
+  for (const cue of state.subs || []) {
+    const li = document.createElement('li');
+    li._cue = cue;
+    const time = document.createElement('time');
+    time.textContent = fmtCueTime(cue.start);
+    time.title = 'Phát từ đây';
+    time.addEventListener('click', () => startPlayback(cue.start));
+    const input = document.createElement('input');
+    input.value = cue.text;
+    input.setAttribute('aria-label', `Phụ đề lúc ${fmtCueTime(cue.start)}`);
+    input.addEventListener('input', () => {
+      cue.text = input.value;
+      shownCue = null; // vẽ lại nếu đang hiện
+    });
+    li.append(time, input);
+    ui.subList.appendChild(li);
+  }
+  ui.subRun.textContent = state.subs?.length ? 'Tạo lại' : 'Tạo phụ đề';
+}
+
+const subMsg = (t) => { ui.subMsg.textContent = t; };
+const subBar = (p) => {
+  ui.subBar.parentElement.classList.toggle('busy', p == null);
+  ui.subBar.style.width = p == null ? '' : `${Math.round(p * 100)}%`;
+};
+
+async function runSubtitles() {
+  if (!state.buffer || subBusy) return;
+  subBusy = true;
+  ui.subRun.disabled = true;
+  ui.subModel.disabled = ui.subLang.disabled = true;
+  try {
+    subMsg('Đang chuẩn bị âm thanh…');
+    subBar(null);
+    const audio = await toMono16k(state.buffer);
+    const files = {};
+    const res = await transcribe(audio, {
+      model: MODELS[ui.subModel.value],
+      language: ui.subLang.value,
+      onDownload: (d) => {
+        files[d.file] = d;
+        let loaded = 0, total = 0;
+        for (const f of Object.values(files)) { loaded += f.loaded || 0; total += f.total || 0; }
+        if (total) subBar(loaded / total);
+        subMsg(`Đang tải mô hình (chỉ lần đầu)… ${total ? `${Math.round((loaded / total) * 100)}% · ${(loaded / 1e6).toFixed(0)}/${(total / 1e6).toFixed(0)} MB` : ''}`);
+      },
+      onStage: (st) => {
+        subBar(null);
+        subMsg(`Đang nhận dạng giọng nói (${st.device === 'webgpu' ? 'GPU' : 'CPU'})… có thể mất khoảng ${fmtTime(Math.max(5, state.buffer.duration * (st.device === 'webgpu' ? 0.3 : 1.2)))}.`);
+      },
+    });
+    state.subs = chunksToCues(res.chunks, state.buffer.duration);
+    shownCue = null;
+    renderSubList();
+    subBar(1);
+    subMsg(state.subs.length
+      ? `Xong: ${state.subs.length} dòng phụ đề. Bạn có thể sửa chữ trực tiếp bên dưới; bấm vào mốc thời gian để nghe lại.`
+      : 'Không nhận ra lời nói nào trong âm thanh này.');
+  } catch (err) {
+    console.error(err);
+    subBar(0);
+    subMsg(/fetch|network|load/i.test(err.message)
+      ? 'Không tải được mô hình nhận dạng. Lần đầu cần có mạng để tải mô hình – kiểm tra kết nối rồi thử lại.'
+      : `Không tạo được phụ đề: ${err.message}`);
+  } finally {
+    subBusy = false;
+    ui.subRun.disabled = false;
+    ui.subModel.disabled = ui.subLang.disabled = false;
+  }
+}
+
+if (ui.subBtn) {
+  try { subShow = localStorage.getItem('talker.v3.subShow') !== '0'; } catch { /* mặc định hiện */ }
+  ui.subShow.checked = subShow;
+  ui.subShow.addEventListener('change', () => {
+    subShow = ui.subShow.checked;
+    shownCue = undefined;
+    try { localStorage.setItem('talker.v3.subShow', subShow ? '1' : '0'); } catch { /* bỏ qua */ }
+  });
+  ui.subBtn.addEventListener('click', () => {
+    togglePanel(false);
+    ui.subDlg.hidden = false;
+    renderSubList();
+  });
+  ui.subClose.addEventListener('click', () => { ui.subDlg.hidden = true; });
+  document.addEventListener('keydown', (e) => e.key === 'Escape' && (ui.subDlg.hidden = true));
+  ui.subRun.addEventListener('click', runSubtitles);
+  ui.subSrt.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([toSrt(state.subs)], { type: 'application/x-subrip' }));
+    a.download = `talker-phu-de-${new Date().toISOString().slice(0, 10)}.srt`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+}
+
 // ======================= Vòng lặp hoạt ảnh =======================
 
 const POSE_KEYS = [
@@ -1108,6 +1245,7 @@ function frame() {
   }
 
   if (spectrum) drawSpectrum(dt);
+  if (ui.caption) updateCaption();
 
   giraffe.setPose(pose);
   controls.update();

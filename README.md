@@ -40,6 +40,12 @@ Trang riêng, dùng chung toàn bộ tính năng trên, thêm:
 - **Sóng nhạc (music spectrum)**: nhiều đường sóng phát sáng màu xanh ngọc → tím → hồng, biên độ theo phổ
   tần số của âm thanh đang phát/ghi. Chọn kiểu trong bảng **Ảnh nền**: *Sóng phát sáng*, *Cột trắng*
   (cột mảnh mọc lên từ đường chấm như visualizer trên video nhạc) hoặc *Tắt*; sóng cũng được ghép vào video khi xuất.
+- **Phụ đề tự động**: nút *Phụ đề* nhận dạng lời nói trong âm thanh hiện tại (ghi âm, file, TikTok) bằng mô hình
+  [Whisper](https://github.com/openai/whisper) chạy ngay trong trình duyệt qua
+  [transformers.js](https://github.com/huggingface/transformers.js) – không gửi âm thanh lên máy chủ. Chọn tiếng Việt,
+  English hoặc tự nhận diện; mô hình *Nhanh* (~80 MB) hoặc *Chính xác hơn* (~250 MB), chỉ tải lần đầu rồi được lưu lại.
+  Dùng GPU (WebGPU) nếu máy hỗ trợ, nếu không thì CPU. Phụ đề hiện trên màn hình khi phát lại, sửa được từng dòng,
+  tải về dạng `.srt`, và được ghép vào video khi xuất.
 - Nền mặc định **Tối** cho sóng nhạc nổi bật; lựa chọn nền lưu riêng với trang gốc.
 
 ## Chạy
@@ -61,6 +67,8 @@ Micro chỉ hoạt động trên `localhost` hoặc HTTPS. Thư mục `dist/` c�
 | `src/analysis.js` | Phân tích giọng nói và sinh các track chuyển động, `samplePose` để lấy pose theo thời gian |
 | `src/backgrounds.js` | Ảnh nền dựng sẵn (SVG), tải ảnh, lưu lựa chọn |
 | `src/tiktok.js` | Lấy link file video từ link TikTok (qua tikwm.com, có proxy dự phòng) |
+| `src/subtitles.js`, `src/whisper.worker.js` | Phụ đề tự động (Whisper trong Web Worker), chia dòng, SRT, vẽ phụ đề khi xuất |
+| `src/spectrum.js` | Sóng nhạc (sóng phát sáng, cột trắng) |
 | `proxy/tiktok-proxy.js` | Cloudflare Worker làm proxy CORS cho TikTok |
 | `src/main.js` | Cảnh 3D, ghi âm, phát lại, dòng thời gian, giao diện |
 

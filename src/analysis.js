@@ -111,7 +111,7 @@ function rng(seed) {
 
 // ---------- Bước 1: mono 16 kHz ----------
 
-async function toMono16k(audioBuffer) {
+export async function toMono16k(audioBuffer) {
   const length = Math.max(1, Math.ceil(audioBuffer.duration * SR));
   const ctx = new OfflineAudioContext(1, length, SR);
   const src = ctx.createBufferSource();
