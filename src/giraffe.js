@@ -378,9 +378,13 @@ export function createGiraffe() {
     const hipY = HIP_Y - sitE * 0.56;
     torso.position.y = hipY;
     torso.rotation.set(-sitE * 0.62, 0, (p.sway || 0));
+    // Nhảy: cả con bật lên khỏi mặt đất, chân co lại khi ở trên không
+    const hop = Math.max(0, p.hop || 0);
+    root.position.y = hop;
+    const tuck = Math.min(1, hop * 4) * (1 - sitE);
     for (const leg of [hindL, hindR]) {
       // khi ngồi, móng sau đặt lùi ra trước một chút; khi đứng thẳng thì ngay dưới hông
-      solveLeg(leg, sitE * 0.32, -(hipY - 0.12));
+      solveLeg(leg, sitE * 0.32 + tuck * 0.08, -(hipY - 0.12) + tuck * 0.22);
       leg.hip.position.y = hipY;
     }
 
@@ -399,7 +403,7 @@ export function createGiraffe() {
       arm.hip.rotation.set(sitE * 0.62 - raise * 0.35 - sitE * 0.2 * (1 - Math.min(1, raise)), 0,
         arm.side * (lift + sitE * 0.12) - (p.sway || 0) * planted);
       // khuỷu cong lên phía trên (cùng chiều nâng tay)
-      arm.knee.rotation.set(-sitE * 0.35 * (1 - raise), 0, arm.side * elbow * 1.4);
+      arm.knee.rotation.set(-sitE * 0.35 * (1 - raise) + tuck * 0.9 * planted, 0, arm.side * elbow * 1.4);
       arm.ankle.rotation.set(0, 0, 0);
     }
 

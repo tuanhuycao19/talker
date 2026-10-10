@@ -439,7 +439,18 @@ export async function analyzeAudio(audioBuffer) {
   const singing = clamp((avgRun - 0.18) / 0.3, 0, 1);
   const gestureAmp = 0.65 + 0.35 * singing;
 
-  // Ngồi xuống: chỉ với bản ghi đủ dài; mỗi lần 5–10 s, cách nhau 6–14 s, bắt đầu/kết thúc ở chỗ ngắt câu.
+  // Đoạn nhảy giữa bài (bài dài hơn 8 s): 4–6 s quanh giữa bài, nhảy tưng tưng theo nhịp.
+  let danceS = -1, danceE = -1;
+  if (duration > 8) {
+    const len = Math.min(6, Math.max(4, duration * 0.2));
+    const mid = duration * (0.45 + rand() * 0.1);
+    danceS = Math.round((mid - len / 2) * FPS);
+    danceE = Math.round((mid + len / 2) * FPS);
+  }
+  const inDance = (i) => i >= danceS && i < danceE;
+
+  // Ngồi xuống: chỉ với bản ghi đủ dài; mỗi lần 5–10 s, cách nhau 6–14 s, bắt đầu/kết thúc ở chỗ ngắt câu,
+  // không trùng đoạn nhảy.
   const sitT = new Float32Array(n);
   if (duration > 12 && realPhrases.length > 2) {
     let t = 3 + rand() * 4;
@@ -450,53 +461,124 @@ export async function analyzeAudio(audioBuffer) {
       const want = s0 + Math.round((5 + rand() * 5) * FPS);
       const endPh = realPhrases.find((p) => p.end >= want) || realPhrases[realPhrases.length - 1];
       const s1 = Math.min(n, endPh.end + Math.round(0.3 * FPS));
-      for (let i = Math.max(0, s0 - Math.round(0.4 * FPS)); i < s1; i++) sitT[i] = 1;
+      const a0 = Math.max(0, s0 - Math.round(0.4 * FPS));
+      if (danceS >= 0 && a0 < danceE + FPS && s1 > danceS - FPS) {
+        t = danceE / FPS + 1.5; // nhường chỗ cho đoạn nhảy
+        continue;
+      }
+      for (let i = a0; i < s1; i++) sitT[i] = 1;
       t = s1 / FPS + 6 + rand() * 8;
     }
   }
   const sitS = smoothZeroPhase(sitT, 0.3);
 
-  // Kiểu động tác cho từng câu
+  // Động tác tay ngẫu nhiên: mỗi động tác 1–3 s, chọn tay trái / phải / hai tay / nghỉ (~40% nghỉ),
+  // giữa các động tác buông tay một lúc; chỉ múa khi đang có tiếng.
   const rT = { L: new Float32Array(n), R: new Float32Array(n) };
   const spT = { L: new Float32Array(n), R: new Float32Array(n) };
   const elT = { L: new Float32Array(n), R: new Float32Array(n) };
   const domSide = new Int8Array(n); // tay chính khi đứng: -1 trái, 1 phải
-  let lastSide = rand() < 0.5 ? -1 : 1;
-  for (const ph of realPhrases) {
-    const style = rand();
-    lastSide = -lastSide;
-    const end = Math.min(n, ph.end + Math.round(0.25 * FPS));
-    const base = (0.35 + rand() * 0.45) * gestureAmp;
-    const spread = 0.15 + rand() * 0.45;
-    const elbow = 0.25 + rand() * 0.5;
-    const both = style > 0.45; // khi ngồi: múa cả hai tay
-    const rest = style < 0.18; // thỉnh thoảng nghỉ tay
-    for (let i = ph.start; i < end; i++) {
-      domSide[i] = lastSide;
-      if (rest) continue;
-      const e = 0.55 + 0.45 * energy[i];
-      for (const side of ['L', 'R']) {
-        const main = (side === 'R') === (lastSide > 0);
-        const amt = main ? 1 : both ? 0.85 : 0.25;
-        rT[side][i] = base * e * amt;
-        spT[side][i] = spread * amt;
-        elT[side][i] = elbow;
+  {
+    let i = Math.round((0.3 + rand() * 0.8) * FPS);
+    let lastPick = 0;
+    let side = rand() < 0.5 ? -1 : 1;
+    while (i < n) {
+      if (inDance(i)) { i = danceE; continue; }
+      const end = Math.min(n, i + Math.round((1 + rand() * 2) * FPS));
+      const r = rand();
+      let pick = r < 0.4 ? 0 : r < 0.64 ? -1 : r < 0.88 ? 1 : 2; // 0 nghỉ, ±1 một tay, 2 hai tay
+      if ((pick === 1 || pick === -1) && pick === lastPick) pick = -pick; // không lặp cùng một tay
+      if (pick === -1 || pick === 1) side = pick;
+      const base = (0.35 + rand() * 0.45) * gestureAmp;
+      const spread = 0.15 + rand() * 0.45;
+      const elbow = 0.25 + rand() * 0.5;
+      for (let k = i; k < end && !inDance(k); k++) {
+        domSide[k] = side;
+        if (!pick || !active[k]) continue;
+        const e = 0.55 + 0.45 * energy[k];
+        for (const sd of ['L', 'R']) {
+          const main = (sd === 'R') === (side > 0);
+          const amt = main ? 1 : pick === 2 ? 0.85 : 0;
+          rT[sd][k] = base * e * amt;
+          spT[sd][k] = spread * amt;
+          elT[sd][k] = elbow;
+        }
+      }
+      lastPick = pick;
+      // sau một động tác thì buông tay nghỉ một chút
+      i = end + (pick ? Math.round((0.3 + rand() * 1.0) * FPS) : 0);
+    }
+  }
+  // Ngân dài nốt cao, giọng mạnh -> thỉnh thoảng giơ tay thật cao ("lên nốt"), cách nhau ít nhất 4 s
+  {
+    let run = 0, cool = -1, on = false;
+    for (let i = 0; i < n; i++) {
+      run = voiced[i] ? run + 1 : 0;
+      const cond = run > 0.45 * FPS && energy[i] > 0.45 && pitchRel[i] > 0.2 && !inDance(i);
+      if (cond && !on && i > cool) {
+        on = rand() < 0.55;
+        cool = i + 4 * FPS;
+      }
+      if (!cond) on = false;
+      if (on) {
+        const k = clamp((run / FPS - 0.45) / 0.4, 0, 1) * gestureAmp;
+        for (const sd of ['L', 'R']) {
+          const main = (sd === 'R') === (domSide[i] > 0);
+          rT[sd][i] = Math.max(rT[sd][i], (main ? 1.05 : 0.9) * k);
+          spT[sd][i] = Math.max(spT[sd][i], 0.45 * k);
+          elT[sd][i] = elT[sd][i] * (1 - k) + 0.1 * k;
+        }
       }
     }
   }
-  // Ngân dài nốt cao, giọng mạnh -> giơ tay thật cao ("lên nốt")
-  for (let i = 0, run = 0; i < n; i++) {
-    run = voiced[i] ? run + 1 : 0;
-    if (run > 0.45 * FPS && energy[i] > 0.45 && pitchRel[i] > 0.2) {
-      const k = clamp((run / FPS - 0.45) / 0.4, 0, 1) * gestureAmp;
-      for (const side of ['L', 'R']) {
-        const main = (side === 'R') === (domSide[i] > 0);
-        rT[side][i] = Math.max(rT[side][i], (main ? 1.05 : 0.9) * k);
-        spT[side][i] = Math.max(spT[side][i], 0.45 * k);
-        elT[side][i] = elT[side][i] * (1 - k) + 0.1 * k;
-      }
+
+  // Nhảy: mỗi nhịp (âm nhấn, tối thiểu cách 0.4 s; thiếu thì nhịp đều 0.5 s) bật lên một cú,
+  // nhún lấy đà trước và nhún khi tiếp đất; hai tay vung lên luân phiên.
+  const hop = new Float32Array(n);
+  const danceMaskT = new Float32Array(n);
+  if (danceS >= 0) {
+    for (let i = Math.max(0, danceS); i < Math.min(n, danceE); i++) danceMaskT[i] = 1;
+    let beats = [];
+    for (const o of onsets) {
+      if (!inDance(o.i)) continue;
+      if (!beats.length || o.i - beats[beats.length - 1] >= 0.4 * FPS) beats.push(o.i);
     }
+    // lấp chỗ hở (nốt ngân dài ít âm nhấn): chèn nhịp đều 0.5 s để nhảy liên tục
+    const step = Math.round(0.5 * FPS);
+    const filled = [];
+    let prev = danceS - step + Math.round(0.2 * FPS);
+    for (const bt of [...beats, danceE - Math.round(0.3 * FPS)]) {
+      while (bt - prev > step * 1.4) { prev += step; filled.push(prev); }
+      if (bt < danceE - Math.round(0.3 * FPS)) filled.push(bt);
+      prev = bt;
+    }
+    beats = filled;
+    const D = Math.round(0.3 * FPS);
+    beats.forEach((j, bi) => {
+      const h = 0.16 + 0.12 * rand();
+      for (let k = 0; k <= D; k++) {
+        const u = k / D;
+        if (j + k < n) hop[j + k] = Math.max(hop[j + k], h * 4 * u * (1 - u));
+      }
+      for (let k = 1; k <= 5; k++) {
+        if (j - k >= 0) squash[j - k] = Math.max(squash[j - k], 0.08 * (1 - k / 6)); // nhún lấy đà
+        if (j + D + k - 1 < n) squash[j + D + k - 1] = Math.max(squash[j + D + k - 1], 0.12 * (1 - k / 6)); // tiếp đất
+      }
+      const up = bi % 2 ? 'L' : 'R';
+      const other = up === 'L' ? 'R' : 'L';
+      for (let k = -3; k <= D + 6; k++) {
+        const f = j + k;
+        if (f < 0 || f >= n) continue;
+        rT[up][f] = Math.max(rT[up][f], 0.95);
+        spT[up][f] = Math.max(spT[up][f], 0.5);
+        elT[up][f] = 0.2;
+        rT[other][f] = Math.max(rT[other][f], 0.4);
+        spT[other][f] = Math.max(spT[other][f], 0.6);
+        elT[other][f] = 0.5;
+      }
+    });
   }
+  const danceMask = smoothZeroPhase(danceMaskT, 0.2);
   // nhịp: tay "bật" nhẹ theo âm nhấn
   const pumpImp = new Float32Array(n);
   for (const o of onsets) pumpImp[o.i] += 0.1 * o.s * gestureAmp;
@@ -512,8 +594,9 @@ export async function analyzeAudio(audioBuffer) {
       // đứng trên 4 chân: chỉ tay chính được giơ, tối đa vừa phải; ngồi thì cả hai tay rảnh
       const stand = 1 - sitS[i];
       const isMain = domSide[i] === sideSign;
-      const cap = 0.62 + 0.58 * sitS[i];
-      const allow = isMain ? 1 : 1 - stand;
+      const free = Math.max(sitS[i], danceMask[i]); // ngồi hoặc đang nhảy: cả hai tay rảnh
+      const cap = 0.62 + 0.58 * free;
+      const allow = isMain ? 1 : Math.max(1 - stand, danceMask[i]);
       r[i] = Math.min(cap, (r[i] + (r[i] > 0.05 ? pump[i] : 0)) * allow);
       sp[i] *= allow;
       el[i] *= allow; // chân trụ không gập khuỷu
@@ -655,7 +738,7 @@ export async function analyzeAudio(audioBuffer) {
 
   const tracks = {
     jaw, stretch, pucker, upperRaise, lowerDrop, lowerTuck, lipPress, tongueUp, smile, smileAsym, mouthShift,
-    sit: sitS, sway, ...armTracks,
+    sit: sitS, sway, hop, ...armTracks,
     headPitch, neckPitch,
     earL, earR, eyeWide, blink, lookX, lookY, bodyY, squash, tail,
   };

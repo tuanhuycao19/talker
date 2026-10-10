@@ -17,8 +17,10 @@ ghi âm giọng nói của bạn rồi "nói lại" với chuyển động miệ
     với âm "i", khoé miệng cười theo cao độ, mỗi câu lệch một bên và nói hơi lệch miệng cho có "diễn xuất".
   - **Đầu**: gật theo các điểm nhấn âm tiết (lò xo tắt dần), ngẩng lên khi giọng cao, xoay/nghiêng
     đổi hướng theo từng câu (câu được tách bằng khoảng lặng).
-  - **Động tác ca sĩ**: chân trước thành "tay" có khớp vai và khuỷu, múa theo từng câu hát (vung một tay, hai tay,
-    nghỉ tay), nâng hạ theo độ to và nhịp; ngân dài nốt cao thì giơ tay thật cao. Với bản ghi dài hơn 12 giây,
+  - **Động tác ca sĩ**: chân trước thành "tay" có khớp vai và khuỷu. Động tác ngẫu nhiên 1–3 s: tay trái, tay phải,
+    hai tay (khi ngồi) hoặc nghỉ (~40% thời gian buông tay), nâng hạ theo độ to và nhịp; thỉnh thoảng giơ tay thật
+    cao khi ngân nốt cao. Bài dài hơn 8 s có đoạn 4–6 s giữa bài nhảy tưng tưng theo nhịp (nhún lấy đà, co chân trên
+    không, nhún khi tiếp đất, hai tay vung luân phiên). Với bản ghi dài hơn 12 giây,
     thỉnh thoảng hươu ngồi xuống (hai chân sau gập bằng IK, thân ngả ra sau) 5–10 giây rồi đứng dậy ở chỗ ngắt câu.
     Khi đứng chỉ giơ một tay (trụ 3 chân), khi ngồi múa cả hai tay; người đung đưa theo nhịp.
   - **Tai, mắt, thân, đuôi**: tai vểnh khi nói, giật nhẹ ở âm nhấn mạnh; mắt mở to khi cao giọng,
