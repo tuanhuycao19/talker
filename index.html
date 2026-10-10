@@ -10,6 +10,10 @@
   </head>
   <body>
     <div id="bg" aria-hidden="true"></div>
+    <div id="bgVideoWrap" class="bg-video" aria-hidden="true" hidden>
+      <div id="bgVideoBlur" class="bg-video-blur"></div>
+      <video id="bgVideo" playsinline muted loop preload="auto"></video>
+    </div>
     <canvas id="scene" aria-label="Hươu cao cổ 3D"></canvas>
 
     <header class="topbar">
@@ -44,6 +48,11 @@
     <div id="status" class="status" role="status" aria-live="polite">Nhấn <b>Ghi âm</b> và nói gì đó với hươu nhé!</div>
 
     <footer class="dock">
+      <form id="ttForm" class="tt-row" autocomplete="off">
+        <svg class="tt-logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.6 5.8A4.3 4.3 0 0 1 15.5 3h-3.1v12.4a2.6 2.6 0 1 1-2.6-2.6c.3 0 .5 0 .8.1V9.7a5.7 5.7 0 1 0 4.9 5.7V9.1a7.4 7.4 0 0 0 4.3 1.4V7.4a4.3 4.3 0 0 1-3.2-1.6z" fill="currentColor"/></svg>
+        <input id="ttUrl" type="url" inputmode="url" placeholder="Dán link TikTok, vd: https://vt.tiktok.com/ZSbnqN2Gm/" aria-label="Link video TikTok" />
+        <button id="ttBtn" class="btn primary small" type="submit">Lấy video</button>
+      </form>
       <div class="timeline-wrap">
         <canvas id="timeline" aria-label="Dòng thời gian bản ghi"></canvas>
         <div id="timelineEmpty" class="timeline-empty">Chưa có bản ghi</div>
@@ -66,10 +75,10 @@
             <option value="1.4">Giọng chíp chíp (x1.4)</option>
             <option value="0.85">Giọng trầm (x0.85)</option>
           </select>
-          <label class="btn ghost file-btn" title="Dùng file âm thanh có sẵn">
+          <label class="btn ghost file-btn" title="Dùng file âm thanh hoặc video có sẵn">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="16.5" cy="16" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
             <span>Mở file</span>
-            <input id="audioFile" type="file" accept="audio/*" />
+            <input id="audioFile" type="file" accept="audio/*,video/*" />
           </label>
           <a id="download" class="btn ghost" download hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0-4-4m4 4 4-4M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>

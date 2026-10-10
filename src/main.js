@@ -4,6 +4,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { createGiraffe } from './giraffe.js';
 import { analyzeAudio, samplePose } from './analysis.js';
 import { PRESETS, loadBackground, saveBackground, backgroundCss, readImageFile } from './backgrounds.js';
+import { isTikTokUrl, resolveTikTok, fetchTikTokVideo } from './tiktok.js';
 
 const $ = (id) => document.getElementById(id);
 const ui = {
@@ -15,6 +16,12 @@ const ui = {
   playBtn: $('playBtn'),
   voice: $('voice'),
   audioFile: $('audioFile'),
+  bgVideoWrap: $('bgVideoWrap'),
+  bgVideo: $('bgVideo'),
+  bgVideoBlur: $('bgVideoBlur'),
+  ttForm: $('ttForm'),
+  ttUrl: $('ttUrl'),
+  ttBtn: $('ttBtn'),
   download: $('download'),
   timeline: $('timeline'),
   timelineEmpty: $('timelineEmpty'),
@@ -209,6 +216,9 @@ const state = {
   playOffset: 0,
   rate: 1,
   playhead: 0,
+  // nền video (TikTok hoặc file video); videoLinked = âm thanh hiện tại lấy từ chính video này
+  videoUrl: null,
+  videoLinked: false,
 };
 
 const MAX_REC_SECONDS = 60;
@@ -279,12 +289,13 @@ async function onRecordingStopped() {
   await loadAudio(blob);
 }
 
-async function loadAudio(blob) {
+async function loadAudio(blob, { fromVideo = false, label = '' } = {}) {
   state.mode = 'analyzing';
   ui.recBtn.classList.add('busy');
   ui.playBtn.disabled = true;
   setStatus('Đang phân tích giọng nói và tạo chuyển động…');
   try {
+    stopPlayback();
     const ctx = getAudioCtx();
     const data = await blob.arrayBuffer();
     const buffer = await ctx.decodeAudioData(data);
@@ -294,25 +305,29 @@ async function loadAudio(blob) {
     const ms = Math.round(performance.now() - t0);
     state.buffer = buffer;
     state.anim = anim;
+    setVideoLinked(fromVideo);
     state.waveform = computeWaveform(buffer, 600);
     if (state.blobUrl) URL.revokeObjectURL(state.blobUrl);
     state.blobUrl = URL.createObjectURL(blob);
     ui.download.href = state.blobUrl;
-    ui.download.download = `talker-${Date.now()}.${(blob.type.split('/')[1] || 'webm').split(';')[0]}`;
+    ui.download.download = `talker-${Date.now()}.${(blob.type.split('/')[1] || (fromVideo ? 'mp4' : 'webm')).split(';')[0]}`;
     ui.download.hidden = false;
     ui.timelineEmpty.hidden = true;
     ui.playBtn.disabled = false;
     state.playhead = 0;
     const s = anim.stats;
-    setStatus(`Đã tạo chuyển động: ${fmtTime(anim.duration)} · ${s.syllables} nhấn âm · ${anim.phrases.length} câu`
+    setStatus(`${label ? `${escapeHtml(label)} · ` : ''}Đã tạo chuyển động: ${fmtTime(anim.duration)} · ${s.syllables} nhấn âm · ${anim.phrases.length} câu`
       + `${s.medianPitch ? ` · cao độ ~${s.medianPitch} Hz` : ''} (${ms} ms). Nhấn <b>Phát lại</b>!`);
     state.mode = 'idle';
     drawTimeline();
     window.__talker = { anim, duration: buffer.duration }; // hỗ trợ kiểm thử
+    window.__playhead = () => (state.mode === 'playing' ? playbackTime() : state.playhead);
   } catch (err) {
     console.error(err);
     state.mode = 'idle';
-    setStatus(`Không xử lý được âm thanh: ${err.message}`);
+    setStatus(fromVideo
+      ? `Đã đặt video làm nền, nhưng không đọc được âm thanh của video: ${escapeHtml(err.message)}`
+      : `Không xử lý được âm thanh: ${escapeHtml(err.message)}`);
   } finally {
     ui.recBtn.classList.remove('busy');
   }
@@ -346,6 +361,7 @@ function startPlayback(offset = 0) {
       state.source = null;
       state.mode = 'idle';
       state.playhead = 0;
+      if (state.videoLinked) ui.bgVideo.pause();
       ui.playBtn.classList.remove('playing');
       ui.playBtn.querySelector('.label').textContent = 'Phát lại';
       setStatus('Xong! Nhấn <b>Phát lại</b> để xem lại hoặc <b>Ghi âm</b> câu mới.');
@@ -356,6 +372,12 @@ function startPlayback(offset = 0) {
   state.playStartCtx = ctx.currentTime + 0.05;
   src.start(state.playStartCtx, state.playOffset);
   state.source = src;
+  if (state.videoLinked) {
+    ui.bgVideo.currentTime = state.playOffset;
+    ui.bgVideo.playbackRate = state.rate;
+    // âm thanh bắt đầu sau 50ms (playStartCtx), video chờ cùng nhịp
+    setTimeout(() => state.source === src && ui.bgVideo.play().catch(() => {}), 50);
+  }
   state.mode = 'playing';
   ui.playBtn.classList.add('playing');
   ui.playBtn.querySelector('.label').textContent = 'Dừng';
@@ -369,6 +391,7 @@ function stopPlayback() {
     try { s.stop(); } catch { /* đã dừng */ }
   }
   if (state.mode === 'playing') state.mode = 'idle';
+  if (state.videoLinked) ui.bgVideo.pause();
   ui.playBtn.classList.remove('playing');
   ui.playBtn.querySelector('.label').textContent = 'Phát lại';
 }
@@ -457,11 +480,69 @@ ui.timeline.addEventListener('click', (e) => {
 });
 window.addEventListener('resize', drawTimeline);
 
+// ======================= Nền video =======================
+
+const escapeHtml = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+function showVideoBackground(src, poster = '') {
+  const v = ui.bgVideo;
+  ui.bgVideoWrap.hidden = false;
+  ui.bgVideoBlur.style.backgroundImage = poster ? `url("${poster}")` : 'none';
+  v.muted = true;
+  v.src = src;
+  if (poster) v.poster = poster;
+  else v.removeAttribute('poster');
+  // Không có ảnh bìa: lấy khung hình đầu làm nền mờ hai bên.
+  v.addEventListener('loadeddata', () => {
+    if (poster) return;
+    try {
+      const c = document.createElement('canvas');
+      c.width = 64;
+      c.height = Math.max(1, Math.round((64 * v.videoHeight) / (v.videoWidth || 1)));
+      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+      ui.bgVideoBlur.style.backgroundImage = `url("${c.toDataURL('image/jpeg', 0.7)}")`;
+    } catch { /* video khác nguồn – bỏ qua */ }
+  }, { once: true });
+  setVideoLinked(false);
+  for (const el of ui.presetGrid.children) el.classList.remove('active');
+}
+
+function hideVideoBackground() {
+  const v = ui.bgVideo;
+  if (ui.bgVideoWrap.hidden) return;
+  v.pause();
+  v.removeAttribute('src');
+  v.load();
+  ui.bgVideoWrap.hidden = true;
+  state.videoLinked = false;
+  if (state.videoUrl) URL.revokeObjectURL(state.videoUrl);
+  state.videoUrl = null;
+}
+
+// Video gắn với âm thanh: chỉ chạy khi phát lại (đồng bộ theo âm thanh).
+// Video chỉ làm nền (âm thanh từ ghi âm khác): chạy lặp, tắt tiếng.
+function setVideoLinked(linked) {
+  const v = ui.bgVideo;
+  state.videoLinked = linked && !ui.bgVideoWrap.hidden;
+  if (ui.bgVideoWrap.hidden) return;
+  v.muted = true;
+  if (state.videoLinked) {
+    v.loop = false;
+    v.pause();
+    v.currentTime = 0;
+  } else {
+    v.loop = true;
+    v.playbackRate = 1;
+    v.play().catch(() => {});
+  }
+}
+
 // ======================= Ảnh nền =======================
 
 let currentBg = loadBackground();
 
 function applyBackground(bg, persist = true) {
+  if (persist) hideVideoBackground();
   currentBg = bg;
   const css = backgroundCss(bg);
   ui.bg.style.backgroundImage = css.image;
@@ -532,7 +613,60 @@ ui.audioFile.addEventListener('change', async () => {
   if (!file) return;
   if (state.mode === 'recording') stopRecording();
   stopPlayback();
-  await loadAudio(file);
+  if (file.type.startsWith('video/')) {
+    if (state.videoUrl) URL.revokeObjectURL(state.videoUrl);
+    state.videoUrl = URL.createObjectURL(file);
+    showVideoBackground(state.videoUrl);
+    await loadAudio(file, { fromVideo: true, label: file.name });
+  } else {
+    await loadAudio(file);
+  }
+});
+
+// ======================= Video TikTok =======================
+
+ui.ttForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const link = ui.ttUrl.value.trim();
+  if (!isTikTokUrl(link)) {
+    setStatus('Link chưa đúng. Hãy dán link video TikTok, ví dụ <b>https://vt.tiktok.com/…</b>');
+    ui.ttUrl.focus();
+    return;
+  }
+  if (state.mode === 'recording') stopRecording();
+  stopPlayback();
+  getAudioCtx();
+  ui.ttBtn.disabled = true;
+  ui.recBtn.classList.add('busy');
+  try {
+    setStatus('Đang tìm video TikTok…');
+    const info = await resolveTikTok(link);
+    const label = info.author ? `@${info.author}` : 'TikTok';
+    let blob;
+    try {
+      blob = await fetchTikTokVideo(info, (loaded, total) => {
+        setStatus(`Đang tải video ${label}… ${total ? `${Math.round((loaded / total) * 100)}%` : `${(loaded / 1e6).toFixed(1)} MB`}`);
+      });
+    } catch (err) {
+      // Không tải được file (thường do CORS): vẫn đặt video làm nền nhưng không phân tích được âm thanh.
+      console.warn(err);
+      showVideoBackground(info.video, info.cover);
+      setVideoLinked(false);
+      setStatus('Đã đặt video làm nền, nhưng trình duyệt bị chặn tải âm thanh để phân tích. '
+        + 'Hãy cấu hình proxy (xem README) hoặc tải video về rồi dùng <b>Mở file</b>.');
+      return;
+    }
+    if (state.videoUrl) URL.revokeObjectURL(state.videoUrl);
+    state.videoUrl = URL.createObjectURL(blob);
+    showVideoBackground(state.videoUrl, info.cover);
+    await loadAudio(blob, { fromVideo: true, label });
+  } catch (err) {
+    console.error(err);
+    setStatus(`Không lấy được video: ${escapeHtml(err.message)}`);
+  } finally {
+    ui.ttBtn.disabled = false;
+    ui.recBtn.classList.remove('busy');
+  }
 });
 
 // Phím tắt: R ghi/dừng, Space phát/dừng.
@@ -602,6 +736,13 @@ function frame() {
       else pose[k] += p[k] * w;
     }
     drawTimeline();
+  }
+
+  // Giữ video nền khớp với âm thanh khi phát (sửa lệch > 0.15s).
+  const v = ui.bgVideo;
+  if (state.videoLinked && state.mode === 'playing' && !v.seeking && v.readyState >= 2) {
+    if (Math.abs(v.currentTime - state.playhead) > 0.15) v.currentTime = state.playhead;
+    if (v.paused) v.play().catch(() => {});
   }
 
   giraffe.setPose(pose);

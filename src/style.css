@@ -35,6 +35,27 @@ html, body {
   transition: background-image 0.3s;
 }
 
+.bg-video {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #111;
+}
+.bg-video-blur {
+  position: absolute;
+  inset: -40px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(28px) brightness(0.75) saturate(1.2);
+}
+.bg-video video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 #scene {
   position: fixed;
   inset: 0;
@@ -188,6 +209,31 @@ button:focus-visible, .btn:focus-within, select:focus-visible { outline: 3px sol
   box-shadow: var(--shadow);
   border: 1px solid var(--border);
 }
+.tt-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 4px 4px 4px 12px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid var(--border);
+}
+.tt-row .tt-logo { color: #111; }
+.tt-row input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  font: inherit;
+  font-size: 14px;
+  background: transparent;
+  color: var(--fg);
+  padding: 6px 0;
+}
+.tt-row:focus-within { outline: 3px solid rgba(242, 162, 58, 0.6); outline-offset: 1px; }
+.btn.small { padding: 8px 12px; font-size: 14px; border-radius: 11px; }
+
 .timeline-wrap { position: relative; height: 54px; margin-bottom: 10px; }
 #timeline { width: 100%; height: 100%; display: block; border-radius: 12px; background: rgba(255, 255, 255, 0.6); cursor: pointer; }
 .timeline-empty[hidden] { display: none; }
