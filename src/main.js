@@ -31,6 +31,7 @@ const ui = {
   spectrum: $('spectrum'),
   specStyle: $('specStyle'),
   giraffeShow: $('giraffeShow'),
+  specHandle: $('specHandle'),
   subBtn: $('subBtn'),
   caption: $('caption'),
   subDlg: $('subDlg'),
@@ -842,7 +843,7 @@ function drawExportFrame() {
     if (layer.width !== W || layer.height !== H) { layer.width = W; layer.height = H; }
     const lg = layer.getContext('2d');
     lg.clearRect(0, 0, W, H);
-    spectrum.draw(lg, W, H, performance.now() / 1000, { ...specPos(), style: specStyle });
+    spectrum.draw(lg, W, H, performance.now() / 1000, { ...specPos(), x: specOffset.x, y: specPos().y + specOffset.y, style: specStyle });
     g.drawImage(layer, 0, 0);
   }
   g.drawImage(renderer.domElement, 0, 0, W, H);
@@ -1047,6 +1048,7 @@ if (spectrum) {
     specOn = specStyle !== 'off';
     ui.specStyle.value = specStyle;
     ui.spectrum.hidden = !specOn;
+    ui.specHandle.hidden = !specOn;
   };
   apply();
   ui.specStyle.addEventListener('change', () => {
@@ -1077,7 +1079,60 @@ function drawSpectrum(dt) {
   g.clearRect(0, 0, w, h);
   // đặt sóng ngang thân hươu (hươu được dịch lên để chừa chỗ cho khung điều khiển)
   const dock = document.body.classList.contains('ui-hidden') ? 0 : (document.querySelector('.dock')?.offsetHeight || 0);
-  spectrum.draw(g, w, h, performance.now() / 1000, { y: specPos().y - (dock / window.innerHeight) * 0.45, amp: SPEC_POS.amp, style: specStyle });
+  const y = specPos().y - (dock / window.innerHeight) * 0.45 + specOffset.y;
+  spectrum.draw(g, w, h, performance.now() / 1000, { x: specOffset.x, y, amp: SPEC_POS.amp, style: specStyle });
+  // nút kéo đặt ở giữa sóng
+  const hx = c.clientWidth * (0.5 + specOffset.x);
+  const hy = c.clientHeight * y;
+  ui.specHandle.style.transform = `translate(${hx.toFixed(1)}px, ${hy.toFixed(1)}px)`;
+}
+
+// ---------- Kéo thả vị trí sóng nhạc ----------
+// specOffset: độ lệch so với vị trí mặc định, theo tỉ lệ bề rộng/chiều cao khung (dùng chung cho khung xuất video).
+const specOffset = { x: 0, y: 0 };
+if (spectrum) {
+  try { Object.assign(specOffset, JSON.parse(localStorage.getItem('talker.v3.specOffset') || '{}')); } catch { /* mặc định */ }
+  const saveOffset = () => {
+    try { localStorage.setItem('talker.v3.specOffset', JSON.stringify(specOffset)); } catch { /* bỏ qua */ }
+  };
+  const h = ui.specHandle;
+  let drag = null;
+  h.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    h.setPointerCapture(e.pointerId);
+    drag = { x: e.clientX, y: e.clientY, ox: specOffset.x, oy: specOffset.y };
+    h.classList.add('dragging');
+  });
+  h.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const W = window.innerWidth, H = window.innerHeight;
+    specOffset.x = Math.max(-0.5, Math.min(0.5, drag.ox + (e.clientX - drag.x) / W));
+    specOffset.y = Math.max(-0.55, Math.min(0.4, drag.oy + (e.clientY - drag.y) / H));
+  });
+  const end = () => {
+    if (!drag) return;
+    drag = null;
+    h.classList.remove('dragging');
+    saveOffset();
+  };
+  h.addEventListener('pointerup', end);
+  h.addEventListener('pointercancel', end);
+  h.addEventListener('dblclick', () => {
+    specOffset.x = 0;
+    specOffset.y = 0;
+    saveOffset();
+  });
+  // phím mũi tên khi nút đang được chọn
+  h.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 0.05 : 0.01;
+    const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    e.stopPropagation();
+    specOffset.x = Math.max(-0.5, Math.min(0.5, specOffset.x + d[0]));
+    specOffset.y = Math.max(-0.55, Math.min(0.4, specOffset.y + d[1]));
+    saveOffset();
+  });
 }
 
 

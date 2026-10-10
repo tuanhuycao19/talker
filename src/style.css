@@ -64,6 +64,29 @@ html, body {
   pointer-events: none;
 }
 .spectrum[hidden] { display: none; }
+.spec-handle {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(20, 24, 32, 0.45);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  cursor: grab;
+  touch-action: none;
+  opacity: 0.75;
+  transition: opacity 0.2s;
+}
+.spec-handle:hover, .spec-handle.dragging { opacity: 1; }
+.spec-handle.dragging { cursor: grabbing; }
+.spec-handle[hidden], body.ui-hidden .spec-handle { display: none; }
 .brand .ver {
   font-size: 12px;
   font-weight: 800;

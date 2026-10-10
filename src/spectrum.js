@@ -126,7 +126,15 @@ export function createSpectrum() {
   }
 
   // Vẽ lên một context 2D bất kỳ (màn hình hoặc khung xuất video).
+  // opts.x: dịch ngang (tỉ lệ bề rộng), opts.y: vị trí dọc của đường giữa (tỉ lệ chiều cao)
   function draw(g, W, H, t, opts = {}) {
+    if (opts.x) {
+      g.save();
+      g.translate(opts.x * W, 0);
+      draw(g, W, H, t, { ...opts, x: 0 });
+      g.restore();
+      return;
+    }
     if (opts.style === 'bars') return drawBars(g, W, H, t, opts);
     const { y = 0.6, amp = 0.17 } = opts;
     const cy = H * y;
